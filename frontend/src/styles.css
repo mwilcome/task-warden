@@ -1,0 +1,16 @@
+/* Global styles — Story M will refine visual baseline */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: #f7f7f5;
+}

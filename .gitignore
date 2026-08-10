@@ -1,0 +1,39 @@
+# Dependencies & build
+node_modules/
+dist/
+.angular/
+out-tsc/
+*.tsbuildinfo
+
+# Java / Maven
+backend/target/
+*.class
+*.jar
+*.war
+*.ear
+hs_err_pid*
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs & env
+*.log
+npm-debug.log*
+.env
+.env.*
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Misc
+*.tmp
+*.temp
