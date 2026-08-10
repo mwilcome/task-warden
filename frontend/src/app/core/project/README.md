@@ -1,20 +1,16 @@
 # Domain: Project
 
-Bounded context for the Task Warden **project aggregate** (the `.tw.json` file).
+Bounded context for the `.tw.json` aggregate.
 
 | Kind | Files |
 |------|--------|
 | Types / constants | `project.types.ts` |
 | Factory | `create-empty-project.ts` |
-| Invariants / validation | `validate-project.ts` |
+| Validation | `validate-project.ts` |
+| Tasks / statuses | `task-ops.ts`, `status-ops.ts`, `board-model.ts` |
 | Identity | `uuid.ts` |
-| Application session | `project-session.service.ts` (orchestrates domain + `core/fs`) |
+| Application session | `project-session.service.ts` |
 
-**Rules**
-
-- Domain modules (`project.types`, create, validate, uuid): pure TypeScript — no Angular DI, no DOM, no File System Access API.
-- `ProjectSessionService` is the **application** layer: holds session state, calls domain + `ProjectFileRepository`.
-- Presentation (`home/`) only talks to the session service.
-- Schema and rules come from repo root `MVP.md`.
+Domain modules are pure TypeScript (no DOM / File System Access). Session orchestrates domain + `core/fs`. Schema reference: repo `docs/schema.md`.
 
 Public API: `index.ts`.

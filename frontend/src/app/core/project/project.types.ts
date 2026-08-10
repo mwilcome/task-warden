@@ -1,7 +1,7 @@
 /**
- * Task Warden project schema v1.0.0 — frozen for MVP.
+ * Task Warden project schema v1.0.0.
  * Domain types for the Project bounded context (no Angular / no I/O).
- * See repo root MVP.md §3 and docs/architecture.md.
+ * See docs/schema.md and docs/architecture.md.
  */
 
 /** Schema version required on every project file. */
@@ -25,7 +25,7 @@ export const AI_INSTRUCTIONS = `Task Warden project file (local-first).
 - id must be a valid UUID. Generate a new one for every new task.
 - Prefer small, clear task titles.`;
 
-/** User-facing validation failure prefix (MVP §3.4). */
+/** User-facing validation failure prefix. */
 export const INVALID_FILE_MESSAGE = 'Invalid Task Warden file';
 
 /** A single task in the project board. */

@@ -1,6 +1,6 @@
 /**
  * Minimal File System Access API typings used by infrastructure.
- * Chrome / Edge only for MVP (see MVP.md).
+ * Chrome / Edge required (File System Access API).
  */
 
 export interface TwFilePickerAcceptType {

@@ -1,10 +1,10 @@
 # Task Warden – Backend (scaffold only)
 
-This package is an empty **Java 21 LTS** Maven project.
+Empty **Java 21** Maven project.
 
-- **MVP does not use the backend.** The product runs 100% in the browser.
+- The product currently runs entirely in the browser.
 - No HTTP endpoints or business logic yet.
-- Exists so the monorepo has a place for a future API.
+- Placeholder for a future API.
 
 ## Build
 

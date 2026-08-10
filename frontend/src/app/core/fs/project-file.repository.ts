@@ -10,7 +10,7 @@ export class FileSystemUnsupportedError extends Error {
   override readonly name = 'FileSystemUnsupportedError';
   constructor() {
     super(
-      'This browser does not support local project files. Use Chrome or Edge for Task Warden MVP.',
+      'This browser does not support local project files. Use Chrome or Edge for Task Warden.',
     );
   }
 }

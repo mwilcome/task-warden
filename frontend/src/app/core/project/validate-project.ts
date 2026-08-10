@@ -24,7 +24,7 @@ function isNullableString(value: unknown): value is string | null {
 }
 
 /**
- * Validates an unknown value as a TwProject (MVP §3.4).
+ * Validates an unknown value as a TwProject.
  * Fail closed — no sanitizing.
  */
 export function validateProject(value: unknown): ProjectValidationResult {
