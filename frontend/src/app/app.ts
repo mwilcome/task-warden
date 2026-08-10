@@ -1,10 +1,13 @@
-import { Component, signal } from '@angular/core';
+import { Component } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
 
+/**
+ * Root shell — routing only.
+ * No component styles: all visuals live in src/styles.scss (see docs/architecture.md).
+ */
 @Component({
   selector: 'app-root',
-  templateUrl: './app.html',
-  styleUrl: './app.css',
+  imports: [RouterOutlet],
+  template: `<router-outlet />`,
 })
-export class App {
-  protected readonly title = signal('Task Warden');
-}
+export class App {}

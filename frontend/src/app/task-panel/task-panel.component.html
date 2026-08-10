@@ -1,0 +1,141 @@
+<div
+  class="task-panel-root"
+  role="dialog"
+  aria-modal="true"
+  [attr.aria-label]="panelTitle"
+  (keydown)="onKeydown($event)"
+>
+  <div class="task-panel-backdrop" (click)="onBackdropClick()"></div>
+
+  <aside class="task-panel">
+    <header class="task-panel__header">
+      <h2 class="task-panel__title">{{ panelTitle }}</h2>
+      <button type="button" class="btn btn-ghost btn-sm" (click)="close()" [disabled]="saving()">
+        Close
+      </button>
+    </header>
+
+    <form class="task-panel__body stack" (ngSubmit)="onSubmit()">
+      <div class="field">
+        <label for="task-title">Title</label>
+        <input
+          id="task-title"
+          #titleInput
+          name="title"
+          type="text"
+          required
+          autocomplete="off"
+          [ngModel]="title()"
+          (ngModelChange)="title.set($event)"
+          [disabled]="saving()"
+        />
+      </div>
+
+      <div class="field">
+        <label for="task-description">Description</label>
+        <textarea
+          id="task-description"
+          name="description"
+          rows="4"
+          [ngModel]="description()"
+          (ngModelChange)="description.set($event)"
+          [disabled]="saving()"
+        ></textarea>
+      </div>
+
+      <div class="field">
+        <label for="task-points">Points</label>
+        <input
+          id="task-points"
+          name="points"
+          type="text"
+          inputmode="numeric"
+          placeholder="Optional"
+          [ngModel]="pointsText()"
+          (ngModelChange)="pointsText.set($event)"
+          [disabled]="saving()"
+        />
+      </div>
+
+      <div class="field">
+        <label for="task-assigned">Assigned</label>
+        <input
+          id="task-assigned"
+          name="assigned"
+          type="text"
+          placeholder="Optional"
+          [ngModel]="assigned()"
+          (ngModelChange)="assigned.set($event)"
+          [disabled]="saving()"
+        />
+      </div>
+
+      @if (mode().kind === 'edit') {
+        <div class="field">
+          <label for="task-status">Status</label>
+          <select
+            id="task-status"
+            name="status"
+            [ngModel]="status()"
+            (ngModelChange)="status.set($event)"
+            [disabled]="saving()"
+          >
+            @for (s of statuses; track s) {
+              <option [value]="s">{{ s }}</option>
+            }
+          </select>
+        </div>
+      }
+
+      @if (formError(); as err) {
+        <div class="alert alert-error" role="alert">{{ err }}</div>
+      }
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary" [disabled]="saving()">
+          {{ mode().kind === 'create' ? 'Add task' : 'Save' }}
+        </button>
+        <button type="button" class="btn btn-secondary" (click)="close()" [disabled]="saving()">
+          Cancel
+        </button>
+      </div>
+
+      @if (mode().kind === 'edit') {
+        <div class="task-panel__danger">
+          @if (!confirmDelete()) {
+            <button
+              type="button"
+              class="btn btn-danger-text btn-sm"
+              (click)="onRequestDelete()"
+              [disabled]="saving()"
+            >
+              Delete
+            </button>
+          } @else {
+            <div class="stack-sm">
+              <p class="flush muted">Delete this task?</p>
+              <div class="form-actions">
+                <button
+                  type="button"
+                  class="btn btn-danger btn-sm"
+                  (click)="onConfirmDelete()"
+                  [disabled]="saving()"
+                >
+                  Delete
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  (click)="onCancelDelete()"
+                  [disabled]="saving()"
+                >
+                  Keep
+                </button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </form>
+  </aside>
+</div>

@@ -1,0 +1,153 @@
+@if (statusError(); as err) {
+  <div class="alert alert-error board-status-error" role="alert">{{ err }}</div>
+}
+
+<div class="board" role="list" aria-label="Project board">
+  @for (column of columns(); track trackStatus($index, column)) {
+    <section
+      class="board-column"
+      [class.board-column--drag-over]="dragOverStatus() === column.status"
+      role="listitem"
+      [attr.aria-label]="column.status"
+      (dragover)="onColumnDragOver($event, column.status)"
+      (dragleave)="onColumnDragLeave($event, column.status)"
+      (drop)="onColumnDrop($event, column.status)"
+    >
+      <header class="board-column__header">
+        <div
+          class="board-column__title-row"
+          draggable="true"
+          (dragstart)="onStatusDragStart($event, column.status)"
+          (dragend)="onStatusDragEnd()"
+          title="Drag to reorder columns"
+        >
+          @if (renamingStatus() === column.status) {
+            <input
+              class="board-column__rename"
+              type="text"
+              aria-label="Rename status"
+              [ngModel]="renameDraft()"
+              (ngModelChange)="renameDraft.set($event)"
+              (keydown)="onRenameKeydown($event, column.status)"
+              (blur)="commitRename(column.status)"
+              #statusRenameInput
+            />
+          } @else {
+            <button
+              type="button"
+              class="board-column__title board-column__title--button"
+              (click)="startRename(column.status)"
+              title="Click to rename"
+            >
+              {{ column.status }}
+            </button>
+          }
+          <span class="board-column__count" [attr.aria-label]="column.count + ' tasks'">
+            {{ column.count }}
+          </span>
+        </div>
+
+        <div class="board-column__actions">
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            [disabled]="!canMoveLeft(column.status)"
+            (click)="moveStatus(column.status, -1)"
+            title="Move column left"
+            aria-label="Move column left"
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            [disabled]="!canMoveRight(column.status)"
+            (click)="moveStatus(column.status, 1)"
+            title="Move column right"
+            aria-label="Move column right"
+          >
+            →
+          </button>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            [disabled]="!canDelete(column)"
+            (click)="onDeleteStatus(column.status)"
+            title="{{
+              canDelete(column)
+                ? 'Delete empty column'
+                : 'Only empty columns can be deleted'
+            }}"
+            aria-label="Delete status"
+          >
+            ×
+          </button>
+        </div>
+      </header>
+
+      <div class="board-column__cards">
+        @if (column.tasks.length === 0) {
+          <p class="board-column__empty muted flush">No tasks</p>
+        }
+        @for (task of column.tasks; track trackTask($index, task)) {
+          <article
+            class="task-card"
+            [class.task-card--dragging]="draggingTaskId() === task.id"
+            role="button"
+            tabindex="0"
+            draggable="true"
+            (dragstart)="onTaskDragStart($event, task)"
+            (dragend)="onTaskDragEnd()"
+            (click)="onCardClick(task)"
+            (keydown.enter)="onCardClick(task)"
+          >
+            <span class="task-card__title">{{ task.title }}</span>
+            @if (task.points !== null) {
+              <span class="task-card__points badge" [attr.aria-label]="task.points + ' points'">
+                {{ task.points }}
+              </span>
+            }
+          </article>
+        }
+      </div>
+
+      <button type="button" class="board-column__add" (click)="onAddTask(column.status)">
+        + Add task
+      </button>
+    </section>
+  }
+
+  <div class="board-column board-column--add">
+    @if (addingStatus()) {
+      <div class="stack-sm">
+        <label class="visually-hidden" for="new-status-name">New status name</label>
+        <input
+          id="new-status-name"
+          #newStatusInput
+          class="board-column__rename"
+          type="text"
+          placeholder="Status name"
+          [ngModel]="newStatusName()"
+          (ngModelChange)="newStatusName.set($event)"
+          (keydown)="onAddStatusKeydown($event)"
+        />
+        <div class="form-actions">
+          <button type="button" class="btn btn-primary btn-sm" (click)="commitAddStatus()">
+            Add
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" (click)="cancelAddStatus()">
+            Cancel
+          </button>
+        </div>
+      </div>
+    } @else {
+      <button type="button" class="board-column__add board-column__add--status" (click)="startAddStatus()">
+        + Add status
+      </button>
+    }
+  </div>
+</div>
+
+@if (panel(); as mode) {
+  <app-task-panel [mode]="mode" (closed)="onPanelClosed()" />
+}

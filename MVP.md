@@ -40,6 +40,8 @@ These apply to every story.
 | File handle | User must **re-open** the file every browser session. No IndexedDB / persistent handle restore. |
 | Browsers | **Chrome / Edge only** for MVP. No Firefox/Safari support. |
 | Validation | Fail closed. No sanitizing of bad files. |
+| DDD | Frontend follows domain-driven design: domain pure in `core/{context}/`; presentation in feature folders. See [`docs/architecture.md`](./docs/architecture.md). |
+| Global styles only | All UI styles in `frontend/src/styles.scss` (or partials imported from it). **No** component/page SCSS/CSS files; **no** `styleUrl` / `styleUrls`. |
 
 ---
 
@@ -141,20 +143,50 @@ Timestamps for the project itself are not required beyond task `created`/`update
 
 ## 4. Architecture (MVP)
 
+Full frontend architecture (DDD layers, folder map, styling rules): **[`docs/architecture.md`](./docs/architecture.md)**.
+
 ```
 task-warden/
-  frontend/          Angular (latest LTS) — the entire product
+  frontend/          Angular — the entire MVP product
   backend/           Empty Java LTS scaffold only — no real endpoints
-  docs/              Future slim API notes; not required for MVP app runtime
+  docs/
+    architecture.md  Frontend DDD + global SCSS conventions (locked)
   MVP.md             This document
-  README.md          Philosophy + how to run + pointer to this file
+  README.md          Philosophy + how to run + pointers
 ```
 
-- **Frontend:** all UI, schema, template, validation, File System Access API I/O.
+### 4.1 Monorepo roles
+
+- **Frontend:** all UI, domain, template, validation, File System Access API I/O.
 - **Backend:** compiles; unused by MVP.
 - **AI integration:** out of process — AI reads/writes the same `.tw.json` on disk. No in-app AI chat in MVP.
 
+### 4.2 Frontend layout (family-skill-tracker style)
+
+Aligned with `family-skill-tracker/frontend`:
+
+| Path | Role |
+|------|------|
+| `src/styles.scss` | **Only** style entry — global SCSS |
+| `app/app.ts` | Thin shell (`router-outlet` only) |
+| `app/core/{context}/` | Domain + application + infrastructure |
+| `app/core/project/` | Project aggregate (schema, template, validation) |
+| `app/layout/` | Shell chrome (when needed) |
+| `app/{feature}/` | Screen components: `.ts` + `.html` only |
+
+**Forbidden:** component/page style files; domain logic inside templates beyond display binding.
+
+### 4.3 DDD dependency rule
+
+```
+Presentation → Application → Domain
+                 ↘ Infrastructure
+```
+
+Domain has zero Angular UI / File System Access dependencies.
+
 ---
+
 
 ## 5. MVP stories (detailed)
 
@@ -360,25 +392,28 @@ Do not skip ahead. After each chunk: verify acceptance criteria in this doc befo
 
 ## 8. Manual test checklist (Story N)
 
-Use this at freeze (expand as needed during build):
+**Freeze record:** [`docs/mvp-freeze.md`](./docs/mvp-freeze.md) (2026-08-10, tag `MVP-1.0.0`).
 
-- [ ] New Project → save `.tw.json` → file has `version` `1.0.0`, locked `aiInstructions`, empty `tasks`
-- [ ] Open valid project → board matches file
-- [ ] Open invalid JSON → Invalid Task Warden file
-- [ ] Open wrong version → reject
-- [ ] Open file with orphan status → reject
-- [ ] Create task in each column → UUID, timestamps, auto-save
-- [ ] Edit all fields → `updated` changes; closed when last status
-- [ ] Move out of last status → `closed` null
-- [ ] Delete with confirm → removed from file
-- [ ] Drag between columns → status + timestamps + closed correct
-- [ ] Rename project → persisted
-- [ ] Add / rename / reorder statuses → columns and tasks consistent
-- [ ] Delete empty status OK; delete non-empty blocked
-- [ ] Save failure path (if simulable) → banner; memory kept
-- [ ] Refresh browser → must re-open file (no silent restore)
-- [ ] Chrome/Edge only documented; app usable there
-- [ ] Local AI can read `aiInstructions` and edit a task in the file successfully
+Automated: `cd frontend && npm test -- --watch=false` (includes AI smoke).  
+Sample file: [`examples/sample.tw.json`](./examples/sample.tw.json).
+
+- [x] New Project → save `.tw.json` → file has `version` `1.0.0`, locked `aiInstructions`, empty `tasks`
+- [x] Open valid project → board matches file
+- [x] Open invalid JSON → Invalid Task Warden file
+- [x] Open wrong version → reject
+- [x] Open file with orphan status → reject
+- [x] Create task in each column → UUID, timestamps, auto-save
+- [x] Edit all fields → `updated` changes; closed when last status
+- [x] Move out of last status → `closed` null
+- [x] Delete with confirm → removed from file
+- [x] Drag between columns → status + timestamps + closed correct
+- [x] Rename project → persisted
+- [x] Add / rename / reorder statuses → columns and tasks consistent
+- [x] Delete empty status OK; delete non-empty blocked
+- [x] Save failure path (if simulable) → banner; memory kept
+- [x] Refresh browser → must re-open file (no silent restore)
+- [x] Chrome/Edge only documented; app usable there
+- [x] Local AI can read `aiInstructions` and edit a task in the file successfully
 
 ---
 
@@ -386,10 +421,10 @@ Use this at freeze (expand as needed during build):
 
 MVP is done when:
 
-1. All stories A–N acceptance criteria pass.
-2. Checklist in §8 is complete.
-3. Repo tagged **`MVP-1.0.0`**.
-4. No intentional work on out-of-scope items has shipped as “required.”
+1. All stories A–N acceptance criteria pass. ✅
+2. Checklist in §8 is complete. ✅ (see `docs/mvp-freeze.md`)
+3. Repo tagged **`MVP-1.0.0`**. ✅
+4. No intentional work on out-of-scope items has shipped as “required.” ✅
 
 ---
 

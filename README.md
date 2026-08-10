@@ -30,10 +30,18 @@ MVP uses the **File System Access API** (Chrome / Edge).
 task-warden/
   frontend/     Angular 22 — the entire MVP product
   backend/      Java 21 scaffold only — unused by MVP
-  docs/         Future API / design notes
+  docs/         Architecture + future API notes
   MVP.md        Frozen MVP requirements
   README.md     This file
 ```
+
+### Frontend architecture (locked)
+
+- **DDD:** domain in `frontend/src/app/core/{context}/`; screens as feature folders.
+- **Global SCSS only:** `frontend/src/styles.scss` — no component style files.
+- Folder shape matches **family-skill-tracker** frontend (`core/`, features, thin `app.ts`).
+
+Details: **[docs/architecture.md](./docs/architecture.md)**.
 
 ## Prerequisites
 
@@ -81,14 +89,14 @@ See [MVP.md §3](./MVP.md#3-schema-v100) for the exact shape, validation rules, 
 
 ## Work plan
 
-Implement in order (see MVP.md §7):
+MVP stories A–N are complete and frozen as tag **`MVP-1.0.0`**.  
+Freeze record: [`docs/mvp-freeze.md`](./docs/mvp-freeze.md).
 
-`A → B → C → (D+E) → (F+G+H) → (I+J) → K → (L+M) → N`
+```
+A → B → C → (D+E) → (F+G+H) → (I+J) → K → (L+M) → N  ✓
+```
 
-- **A** — Monorepo scaffold *(this commit)*
-- **B** — Schema & template
-- **C** — File open / create / auto-save
-- …through freeze **N** (`MVP-1.0.0`)
+Sample project file: [`examples/sample.tw.json`](./examples/sample.tw.json).
 
 ## License
 

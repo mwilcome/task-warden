@@ -1,0 +1,164 @@
+@if (session.saveError(); as saveMsg) {
+  <div class="save-banner" role="status" aria-live="polite">
+    <span>{{ saveMsg }}</span>
+    <button type="button" class="btn btn-sm btn-secondary save-banner__retry" (click)="onRetrySave()">
+      Try again
+    </button>
+  </div>
+}
+
+@if (!session.hasProject()) {
+  <div class="page page-center">
+    <div class="landing stack">
+      <div class="landing__brand">
+        <p class="landing__eyebrow muted flush">Local-first · zero accounts</p>
+        <h1>Task Warden</h1>
+        <p class="muted landing__lede">
+          One project is one <code class="inline-code">.tw.json</code> file on your disk. Open the
+          site, work immediately, auto-save locally. Built so a local AI can read the same file.
+        </p>
+      </div>
+
+      @if (!session.fileSystemSupported) {
+        <div class="alert alert-error" role="alert">
+          <strong>Browser not supported.</strong>
+          Chrome or Edge is required for MVP (File System Access API). Firefox and Safari are out of
+          scope for this release.
+        </div>
+      }
+
+      @if (session.uiError(); as err) {
+        <div class="alert alert-error landing__error" role="alert">
+          <div class="stack-sm">
+            <p class="flush">
+              @if (isInvalidFileError) {
+                <strong>Could not open that file.</strong>
+              } @else {
+                <strong>Something went wrong.</strong>
+              }
+            </p>
+            <p class="flush">{{ err }}</p>
+            @if (isInvalidFileError) {
+              <p class="flush muted">
+                The file was not loaded. Choose another file with Open Project, or start fresh with
+                New Project. Nothing was changed on disk.
+              </p>
+            }
+            <div class="form-actions">
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                (click)="onOpenProject()"
+                [disabled]="session.busy() || !session.fileSystemSupported"
+              >
+                Open another file
+              </button>
+              <button
+                type="button"
+                class="btn btn-primary btn-sm"
+                (click)="onNewProject()"
+                [disabled]="session.busy() || !session.fileSystemSupported"
+              >
+                New Project
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm" (click)="onDismissUiError()">
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <div class="card landing__card stack">
+        <div class="landing__actions">
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="session.busy() || !session.fileSystemSupported"
+            (click)="onNewProject()"
+          >
+            New Project
+          </button>
+          <button
+            type="button"
+            class="btn btn-secondary"
+            [disabled]="session.busy() || !session.fileSystemSupported"
+            (click)="onOpenProject()"
+          >
+            Open Project
+          </button>
+        </div>
+
+        @if (session.busy()) {
+          <p class="loading-line flush" aria-live="polite">Working…</p>
+        }
+
+        <p class="muted landing__hint flush">
+          Files are not restored after refresh — re-open your
+          <code class="inline-code">.tw.json</code> each session.
+        </p>
+      </div>
+    </div>
+  </div>
+} @else {
+  <div class="page page--board">
+    <header class="app-header">
+      <div class="row app-header__left">
+        <span class="app-header__brand">Task Warden</span>
+        <span class="muted app-header__switcher" title="Coming later">Projects ▾</span>
+      </div>
+      <div class="row">
+        @if (session.fileName(); as name) {
+          <span class="muted app-header__file" title="Open file">{{ name }}</span>
+        }
+        <button type="button" class="btn btn-ghost btn-sm" (click)="onCloseProject()">
+          Close
+        </button>
+      </div>
+    </header>
+
+    <div class="project-title-bar">
+      @if (editingName()) {
+        <input
+          class="project-title-bar__input"
+          type="text"
+          aria-label="Project name"
+          [ngModel]="nameDraft()"
+          (ngModelChange)="nameDraft.set($event)"
+          (keydown)="onNameKeydown($event)"
+          (blur)="onNameBlur()"
+          #nameInput
+        />
+      } @else {
+        <button
+          type="button"
+          class="project-title-bar__name project-title-bar__name--button"
+          (click)="onStartEditName()"
+          title="Click to rename (Enter to save, Esc to cancel)"
+        >
+          {{ session.project()!.name }}
+        </button>
+      }
+      @if (nameError(); as err) {
+        <p class="field-error flush">{{ err }}</p>
+      }
+    </div>
+
+    @if (session.uiError(); as err) {
+      <div class="container-wide">
+        <div class="alert alert-error alert-error--row" role="alert">
+          <span>{{ err }}</span>
+          <button type="button" class="btn btn-sm btn-secondary" (click)="onDismissUiError()">
+            Dismiss
+          </button>
+        </div>
+      </div>
+    }
+
+    <main class="app-main app-main--board">
+      <div class="container-wide board-wrap">
+        <app-board />
+      </div>
+    </main>
+  </div>
+}
