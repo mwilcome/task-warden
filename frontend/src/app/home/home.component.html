@@ -118,6 +118,14 @@
             >
               Open Project
             </button>
+            <button
+              type="button"
+              class="projects-menu__item"
+              role="menuitem"
+              (click)="onDownloadProjectFileGuide()"
+            >
+              Download project file guide for AI
+            </button>
 
             <div class="projects-menu__sep" role="separator"></div>
             <p class="projects-menu__heading flush">Recent</p>
@@ -252,6 +260,20 @@
             >
               Open Project
             </button>
+          </div>
+
+          <div class="open-prompt__guide">
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm btn-block"
+              (click)="onDownloadProjectFileGuide()"
+            >
+              Download project file guide for AI
+            </button>
+            <p class="open-prompt__guide-help muted flush">
+              Saves a short markdown file that explains the .tw.json format. Give it to a local AI
+              that edits project files on your computer.
+            </p>
           </div>
 
           @if (session.lastProject(); as last) {

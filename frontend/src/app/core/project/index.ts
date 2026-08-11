@@ -40,3 +40,8 @@ export {
   reorderStatuses,
   syncClosedFields,
 } from './status-ops';
+export {
+  PROJECT_FILE_GUIDE_FILENAME,
+  buildProjectFileGuide,
+  downloadProjectFileGuide,
+} from './project-file-guide';

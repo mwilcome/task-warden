@@ -54,3 +54,7 @@
 ## Editing the file outside the app
 
 Keep valid JSON. Do not add new top-level fields. Use a new UUID v4 for each new task. Prefer short task titles. Read `aiInstructions` on the file for the full edit rules the file expects.
+
+### In-app download
+
+Task Warden can download **project file guide for AI** (`task-warden-project-file-guide.md`) from the open dialog or the Projects menu. That guide is meant for a local AI that edits `.tw.json` on disk.
