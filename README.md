@@ -1,64 +1,18 @@
 # Task Warden
 
-Local-first, zero-account project tracker.
+Task Warden is a browser app for tracking work on a project board.
 
-One project = one `.tw.json` file on your disk. Open the site, work immediately, auto-save locally. No sign-up. No cloud. A local AI can read and edit the same file.
+Each project is one `.tw.json` file on disk. You open or create that file in Chrome or Edge, edit the board in the page, and the app writes changes back to the same file. There is no sign-in and no server required for normal use.
 
-## Run the app
+The file format is plain JSON so other tools (editors, scripts, agents) can read or change the same project file. After external edits, use **Reload** in the app if the project is already open.
 
-**Chrome or Edge** required (File System Access API).
+## What’s in this repo
 
-```bash
-cd frontend
-npm install
-npm start
-```
+| Path | Role |
+|------|------|
+| `frontend/` | The app (Angular) |
+| `docs/` | How to run, build, deploy, and how the code is laid out |
+| `examples/` | Sample `.tw.json` |
+| `backend/` | Empty Java scaffold (not used by the app today) |
 
-Open the URL from `ng serve` (usually `http://localhost:4200`).
-
-- **New Project** — creates a `.tw.json` and prompts you to save it
-- **Open Project** — pick an existing `.tw.json`
-- Re-open the file after a browser refresh (handles are not restored)
-
-Production build:
-
-```bash
-cd frontend
-npm run build
-```
-
-## Repository layout
-
-```
-task-warden/
-  frontend/     Angular app (the product)
-  backend/      Java scaffold only — unused for now
-  docs/         Architecture + schema reference
-  examples/     Sample .tw.json
-  README.md     This file
-```
-
-## Frontend structure
-
-- **DDD:** domain in `frontend/src/app/core/{context}/`; screens as feature folders
-- **Global SCSS only:** `frontend/src/styles.scss` — no component style files
-- Details: [docs/architecture.md](./docs/architecture.md)
-
-## Schema (`.tw.json`)
-
-Version **1.0.0**. Full field reference: [docs/schema.md](./docs/schema.md).
-
-Sample file: [examples/sample.tw.json](./examples/sample.tw.json).
-
-## Backend scaffold
-
-Optional empty Java 21 project (no app dependency):
-
-```bash
-cd backend
-mvn compile
-```
-
-## License
-
-Private / TBD.
+Start with [docs/README.md](./docs/README.md) to run or ship a build.

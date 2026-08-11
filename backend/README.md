@@ -1,20 +1,11 @@
-# Task Warden – Backend (scaffold only)
+# Backend
 
-Empty **Java 21** Maven project.
-
-- The product currently runs entirely in the browser.
-- No HTTP endpoints or business logic yet.
-- Placeholder for a future API.
-
-## Build
-
-Requires JDK 21+ and Maven 3.9+.
+Empty Java 21 Maven project. The product does not use it yet.
 
 ```bash
 cd backend
-mvn -q compile
+mvn compile
+mvn test
 ```
 
-```bash
-mvn -q test
-```
+Needs JDK 21+ and Maven 3.9+.
