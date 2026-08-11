@@ -775,6 +775,13 @@ app-brand-mark {
   gap: var(--space-3);
 }
 
+.open-prompt__browser-help {
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  text-align: center;
+  margin: 0;
+}
+
 .open-prompt__guide {
   display: flex;
   flex-direction: column;
@@ -1038,7 +1045,8 @@ textarea {
   align-items: stretch;
   justify-content: center;
   gap: var(--space-4);
-  min-height: min(70vh, 40rem);
+  /* Columns share a viewport-relative cap; card lists scroll inside. */
+  min-height: 12rem;
   padding-bottom: var(--space-2);
   width: max-content;
   min-width: 100%;
@@ -1048,11 +1056,14 @@ textarea {
 .board-column {
   display: flex;
   flex-direction: column;
-  /* Do not shrink columns to fit the viewport; scroll instead. */
+  /* Do not shrink columns to fit the viewport; horizontal scroll instead. */
   flex: 0 0 16rem;
   width: 16rem;
   min-width: 15rem;
   max-width: 22rem;
+  /* Fixed % of viewport: same idea on phone and large monitors */
+  max-height: 70vh;
+  min-height: 0;
   /* Uniform muted grey surface — no per-status color */
   background: #f7f8fa;
   border: 1px solid var(--color-border);
@@ -1060,6 +1071,8 @@ textarea {
   padding: var(--space-3);
   gap: var(--space-3);
   box-shadow: var(--shadow-sm);
+  /* Column chrome / empty body: horizontal board pan (tasks opt out). */
+  touch-action: pan-x;
 }
 
 .board-column--drag-over {
@@ -1069,6 +1082,7 @@ textarea {
 
 .board-column--add {
   background: transparent;
+  max-height: none;
 }
 
 .board-column__header {
@@ -1076,6 +1090,8 @@ textarea {
   flex-direction: column;
   gap: var(--space-2);
   padding: 0 var(--space-1);
+  flex-shrink: 0;
+  touch-action: pan-x;
 }
 
 .board-column__title-row {
@@ -1189,14 +1205,38 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  /*
+   * Size to task content only (do not fill the column). Remaining height is
+   * .board-column__pan so empty middle is horizontally pannable.
+   */
+  flex: 0 1 auto;
+  min-height: 0;
+  /* Cap so long lists scroll inside; leaves room for header + Add task */
+  max-height: calc(70vh - 10rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  /* List vertical scroll when overflowing; horizontal can pan the board */
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Empty space between task list and Add task — primary pan surface */
+.board-column__pan {
   flex: 1 1 auto;
-  min-height: 2rem;
+  min-height: 0.5rem;
+  touch-action: pan-x;
+  /* Keep drops targeting the column (pointer events on this region). */
+  pointer-events: auto;
 }
 
 .board-column__empty {
   font-size: var(--font-size-sm);
   padding: var(--space-2) var(--space-1);
   opacity: 0.85;
+  /* Label only — not a full-height hit trap */
+  flex-shrink: 0;
+  touch-action: pan-x;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1223,6 +1263,7 @@ textarea {
   text-align: left;
   width: 100%;
   user-select: none;
+  /* Only the task claims the gesture for drag; empty column area can pan. */
   touch-action: none;
 
   &:hover {
@@ -1264,10 +1305,7 @@ textarea {
 body.is-task-dragging {
   cursor: grabbing;
   user-select: none;
-  touch-action: none;
-}
-
-body.is-task-dragging .task-card {
+  /* While a task is mid-drag, keep the page from fighting the drag. */
   touch-action: none;
 }
 
@@ -1290,7 +1328,9 @@ body.is-task-dragging .task-card {
   justify-content: flex-start;
   gap: var(--space-2);
   width: 100%;
-  margin-top: auto;
+  margin-top: 0;
+  flex-shrink: 0;
+  touch-action: pan-x;
   padding: var(--space-2) var(--space-3);
   font: inherit;
   font-size: var(--font-size-sm);

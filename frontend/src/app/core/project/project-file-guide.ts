@@ -23,7 +23,7 @@ This file explains the Task Warden project format.
 
 - One project = one \`.tw.json\` file on disk.
 - The browser app opens that file, shows a board, and saves changes back to the same file.
-- You can also edit the file outside the app. If the project is already open, use **Reload** in Task Warden after external edits.
+- You can also edit the file outside the app. If the project is already open, use **Reload from Disk** in Task Warden after external edits.
 
 ---
 
@@ -117,7 +117,7 @@ Follow that field on the specific file you are editing if it differs.
 ## After you edit
 
 1. Save the \`.tw.json\` file.
-2. In Task Warden, open the project (or press **Reload** if it is already open).
+2. In Task Warden, open the project (or press **Reload from Disk** if it is already open).
 3. Invalid JSON or schema errors are rejected; the app will not silently repair the file.
 `;
 }

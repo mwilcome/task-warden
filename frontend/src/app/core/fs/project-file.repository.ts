@@ -10,7 +10,7 @@ export class FileSystemUnsupportedError extends Error {
   override readonly name = 'FileSystemUnsupportedError';
   constructor() {
     super(
-      'This browser does not support local project files. Use Chrome or Edge for Task Warden.',
+      'This browser cannot open or save .tw.json files on disk. Use Browser only, or open the site in Chrome or Edge for disk files.',
     );
   }
 }

@@ -138,7 +138,8 @@ export class ProjectSessionService {
       this.lastProjectSignal.set({
         id: cached.project.id,
         name: cached.project.name,
-        fileName: cached.fileName ?? '',
+        fileName: cached.fileName,
+        source: 'browser',
         openedAt: cached.cachedAt,
       });
       return;
@@ -147,7 +148,7 @@ export class ProjectSessionService {
   }
 
   /**
-   * Open the remembered last project (file handle if available, else browser cache).
+   * Open the remembered last project (file or browser-only, based on recents source).
    * Used from the open prompt — never runs automatically on load.
    */
   async openLastProject(): Promise<SessionActionResult> {
@@ -158,18 +159,7 @@ export class ProjectSessionService {
       this.uiErrorSignal.set(message);
       return { ok: false, message };
     }
-
-    const handle = await this.recents.getHandle(lastId);
-    if (handle) {
-      return this.openRecent(lastId);
-    }
-
-    this.busySignal.set(true);
-    try {
-      return await this.openFromCache(lastId);
-    } finally {
-      this.busySignal.set(false);
-    }
+    return this.openRecent(lastId);
   }
 
   /** Load a project from browser cache only (no disk handle). Caller manages busy. */
@@ -188,7 +178,8 @@ export class ProjectSessionService {
     this.fileNameSignal.set(cached.fileName);
     this.saveErrorSignal.set(null);
     this.uiErrorSignal.set(null);
-    this.cache.setLastProjectId(cached.project.id);
+    await this.cache.put(cached.project, null);
+    await this.recents.recordBrowser(cached.project);
     await this.refreshLastProjectHint();
     return { ok: true };
   }
@@ -196,6 +187,7 @@ export class ProjectSessionService {
   /**
    * New Project: create template in memory, prompt to save `.tw.json`, keep handle.
    * If the user cancels the save dialog, no session is opened.
+   * Requires File System Access (Chrome/Edge desktop).
    */
   async newProject(): Promise<SessionActionResult> {
     this.uiErrorSignal.set(null);
@@ -217,6 +209,36 @@ export class ProjectSessionService {
       if (error instanceof UserCancelledFilePickerError) {
         return { ok: false, message: error.message, cancelled: true };
       }
+      const message = this.messageFrom(error);
+      this.uiErrorSignal.set(message);
+      return { ok: false, message };
+    } finally {
+      this.busySignal.set(false);
+    }
+  }
+
+  /**
+   * New browser-only project: no disk file. Works in Safari/iPhone and any browser.
+   * Data is stored in this browser's cache only (not a .tw.json on disk).
+   */
+  async newBrowserOnlyProject(): Promise<SessionActionResult> {
+    this.uiErrorSignal.set(null);
+    this.cacheConflictSignal.set(null);
+    this.recentFailureSignal.set(null);
+    this.busySignal.set(true);
+    try {
+      const project = createEmptyProject();
+      this.fileHandleSignal.set(null);
+      this.cacheOnlySignal.set(true);
+      this.projectSignal.set(project);
+      this.fileNameSignal.set(null);
+      this.saveErrorSignal.set(null);
+      this.uiErrorSignal.set(null);
+      await this.cache.put(project, null);
+      await this.recents.recordBrowser(project);
+      await this.refreshLastProjectHint();
+      return { ok: true };
+    } catch (error) {
       const message = this.messageFrom(error);
       this.uiErrorSignal.set(message);
       return { ok: false, message };
@@ -273,7 +295,10 @@ export class ProjectSessionService {
     }
   }
 
-  /** Open a recent project via stored file handle (Projects menu / open prompt). */
+  /**
+   * Open a recent project (Projects menu / open prompt).
+   * Browser-only recents load from cache; file recents use the stored handle.
+   */
   async openRecent(projectId: string): Promise<SessionActionResult> {
     this.uiErrorSignal.set(null);
     this.recentFailureSignal.set(null);
@@ -281,7 +306,9 @@ export class ProjectSessionService {
 
     const meta = await this.recents.getMeta(projectId);
     const handle = await this.recents.getHandle(projectId);
-    if (!handle || !meta) {
+
+    // Last opened as browser-only, or no handle: use browser cache.
+    if (meta?.source === 'browser' || !handle) {
       this.busySignal.set(true);
       try {
         const fromCache = await this.openFromCache(projectId);
@@ -290,6 +317,26 @@ export class ProjectSessionService {
         }
       } finally {
         this.busySignal.set(false);
+      }
+      if (!meta && !handle) {
+        await this.setRecentFailure({
+          projectId,
+          name: 'Project',
+          fileName: '',
+          kind: 'missing',
+          message: 'That project was not found in this browser.',
+        });
+        return { ok: false, message: 'That project was not found in this browser.' };
+      }
+      if (meta?.source === 'browser') {
+        await this.setRecentFailure({
+          projectId,
+          name: meta.name,
+          fileName: '',
+          kind: 'missing',
+          message: 'No browser copy of that project was found.',
+        });
+        return { ok: false, message: 'No browser copy of that project was found.' };
       }
       await this.setRecentFailure({
         projectId,
@@ -311,8 +358,8 @@ export class ProjectSessionService {
         }
         await this.setRecentFailure({
           projectId,
-          name: meta.name,
-          fileName: meta.fileName,
+          name: meta?.name ?? 'Project',
+          fileName: meta?.fileName ?? '',
           kind: 'permission',
           message: 'Permission to read that file was denied.',
         });
@@ -326,8 +373,8 @@ export class ProjectSessionService {
           : validation.message;
         await this.setRecentFailure({
           projectId,
-          name: meta.name,
-          fileName: meta.fileName,
+          name: meta?.name ?? 'Project',
+          fileName: meta?.fileName ?? '',
           kind: 'other',
           message,
         });
@@ -358,8 +405,8 @@ export class ProjectSessionService {
       }
       await this.setRecentFailure({
         projectId,
-        name: meta.name,
-        fileName: meta.fileName,
+        name: meta?.name ?? 'Project',
+        fileName: meta?.fileName ?? '',
         kind,
         message,
       });
@@ -470,6 +517,9 @@ export class ProjectSessionService {
 
     if (handle || this.cacheOnlySignal()) {
       await this.cache.put(next, this.fileNameSignal());
+    }
+    if (this.cacheOnlySignal()) {
+      await this.recents.recordBrowser(next);
     }
 
     return { ok: true };
@@ -602,9 +652,10 @@ export class ProjectSessionService {
   }
 
   /**
-   * Re-read the open file handle from disk, validate, replace memory.
+   * Re-read the open file handle from disk, validate, replace memory and cache.
+   * Disk always wins — no browser-vs-file choice (user asked to reload from disk).
    * On invalid file or I/O error: keep previous in-memory project, set uiError.
-   * If disk disagrees with cache, surface conflict (ask user).
+   * Save failures stay on the save banner; missing files use recovery UI, not this path.
    */
   async reloadFromDisk(): Promise<SessionActionResult> {
     const handle = this.fileHandleSignal();
@@ -616,6 +667,7 @@ export class ProjectSessionService {
 
     this.busySignal.set(true);
     this.uiErrorSignal.set(null);
+    this.cacheConflictSignal.set(null);
     try {
       const { text, fileName } = await this.files.readHandle(handle);
       const validation = parseAndValidateProject(text);
@@ -625,11 +677,6 @@ export class ProjectSessionService {
           : validation.message;
         this.uiErrorSignal.set(message);
         return { ok: false, message };
-      }
-
-      const pending = await this.maybeConflict(handle, validation.project, fileName);
-      if (pending) {
-        return { ok: false, message: 'This file differs from the browser copy.' };
       }
 
       await this.attachFile(this.fileHandleSignal()!, validation.project, fileName);
@@ -713,7 +760,7 @@ export class ProjectSessionService {
     this.fileNameSignal.set(fileName);
     this.saveErrorSignal.set(null);
     this.uiErrorSignal.set(null);
-    await this.recents.record(handle, project, fileName);
+    await this.recents.recordFile(handle, project, fileName);
     await this.cache.put(project, fileName);
     await this.refreshLastProjectHint();
   }

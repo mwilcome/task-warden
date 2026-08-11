@@ -18,11 +18,12 @@ Open the URL printed by the dev server (usually `http://localhost:4200`).
 
 ### Using the app
 
-1. **New Project** saves a new `.tw.json` where you choose.
-2. **Open Project** picks an existing `.tw.json`.
-3. **Last opened** / recents re-open a known project when the browser still has access.
-4. **Reload** re-reads the open file from disk after external edits.
-5. **Close** returns to the empty board and the project-file dialog.
+1. **New Project** (Chrome/Edge) saves a new `.tw.json` where you choose.
+2. **Open Project** (Chrome/Edge) picks an existing `.tw.json`.
+3. **Browser only** starts a project stored in this browser only (works on Safari / iPhone; no disk file).
+4. **Last opened** / recents re-open a known project (file handle or browser cache).
+5. **Reload from Disk** replaces the board with the open file on disk (disk always wins; disk projects only).
+6. **Close** returns to the empty board and the start dialog.
 
 ## Tests
 

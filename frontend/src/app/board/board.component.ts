@@ -20,6 +20,10 @@ import {
 const DND_STATUS_MIME = 'application/x-task-warden-status';
 /** Pixels of movement before a press becomes a task drag (keeps click-to-edit). */
 const TASK_DRAG_THRESHOLD_PX = 8;
+/** Edge band (px) that triggers board/column auto-scroll while dragging a task. */
+const DRAG_SCROLL_EDGE_PX = 56;
+/** Max px per animation frame for auto-scroll (scales up near the edge). */
+const DRAG_SCROLL_MAX_STEP_PX = 22;
 
 type TaskPointerSession = {
   taskId: string;
@@ -73,6 +77,9 @@ export class BoardComponent {
   private readonly newStatusInput = viewChild<ElementRef<HTMLInputElement>>('newStatusInput');
 
   private taskPointer: TaskPointerSession | null = null;
+  /** Last pointer position while dragging (for continuous edge auto-scroll). */
+  private dragPointerPos: { x: number; y: number } | null = null;
+  private dragScrollRaf: number | null = null;
   private readonly onWinPointerMove = (e: PointerEvent) => this.handleTaskPointerMove(e);
   private readonly onWinPointerUp = (e: PointerEvent) => void this.handleTaskPointerUp(e);
   private readonly onWinPointerCancel = (e: PointerEvent) => void this.handleTaskPointerUp(e);
@@ -97,7 +104,10 @@ export class BoardComponent {
       }
     });
 
-    this.destroyRef.onDestroy(() => this.teardownTaskPointerListeners());
+    this.destroyRef.onDestroy(() => {
+      this.teardownTaskPointerListeners();
+      this.stopDragScrollLoop();
+    });
   }
 
   protected onAddTask(status: string): void {
@@ -155,6 +165,7 @@ export class BoardComponent {
       if (Math.hypot(dx, dy) < TASK_DRAG_THRESHOLD_PX) {
         return;
       }
+      /* Any direction past threshold: real task drag (not scroll). */
       session.active = true;
       this.draggingTaskId.set(session.taskId);
       this.draggingStatus.set(null);
@@ -171,23 +182,14 @@ export class BoardComponent {
         y: event.clientY - rect.height / 2,
         width: rect.width,
       });
+      this.dragPointerPos = { x: event.clientX, y: event.clientY };
+      this.startDragScrollLoop();
     }
 
     event.preventDefault();
-
-    const ghost = this.taskGhost();
-    if (ghost) {
-      this.taskGhost.set({
-        ...ghost,
-        x: event.clientX - ghost.width / 2,
-        y: event.clientY - 20,
-      });
-    }
-
-    const status = this.statusUnderPoint(event.clientX, event.clientY);
-    if (status !== this.dragOverStatus()) {
-      this.dragOverStatus.set(status);
-    }
+    this.dragPointerPos = { x: event.clientX, y: event.clientY };
+    this.applyDragAutoScroll(event.clientX, event.clientY);
+    this.updateDragVisuals(event.clientX, event.clientY);
   }
 
   private async handleTaskPointerUp(event: PointerEvent): Promise<void> {
@@ -202,6 +204,7 @@ export class BoardComponent {
       ? this.statusUnderPoint(event.clientX, event.clientY)
       : null;
 
+    this.stopDragScrollLoop();
     this.teardownTaskPointerListeners();
     try {
       session.target.releasePointerCapture(event.pointerId);
@@ -226,6 +229,102 @@ export class BoardComponent {
     if (dropStatus && dropStatus !== session.fromStatus) {
       await this.session.moveTask(taskId, dropStatus);
     }
+  }
+
+  private updateDragVisuals(clientX: number, clientY: number): void {
+    const ghost = this.taskGhost();
+    if (ghost) {
+      this.taskGhost.set({
+        ...ghost,
+        x: clientX - ghost.width / 2,
+        y: clientY - 20,
+      });
+    }
+    const status = this.statusUnderPoint(clientX, clientY);
+    if (status !== this.dragOverStatus()) {
+      this.dragOverStatus.set(status);
+    }
+  }
+
+  /**
+   * While dragging near the left/right of the board scrollport, pan the board.
+   * Near top/bottom of a column's card list, scroll that list.
+   */
+  private applyDragAutoScroll(clientX: number, clientY: number): void {
+    const board = document.querySelector('.app-main--board') as HTMLElement | null;
+    if (board) {
+      const rect = board.getBoundingClientRect();
+      const edge = DRAG_SCROLL_EDGE_PX;
+      const maxStep = DRAG_SCROLL_MAX_STEP_PX;
+      let stepX = 0;
+      if (clientX < rect.left + edge) {
+        const t = Math.min(1, (rect.left + edge - clientX) / edge);
+        stepX = -Math.ceil(maxStep * t);
+      } else if (clientX > rect.right - edge) {
+        const t = Math.min(1, (clientX - (rect.right - edge)) / edge);
+        stepX = Math.ceil(maxStep * t);
+      }
+      if (stepX !== 0) {
+        board.scrollLeft += stepX;
+      }
+    }
+
+    const cards = this.cardsListUnderPoint(clientX, clientY);
+    if (cards) {
+      const rect = cards.getBoundingClientRect();
+      const edge = DRAG_SCROLL_EDGE_PX;
+      const maxStep = DRAG_SCROLL_MAX_STEP_PX;
+      let stepY = 0;
+      if (clientY < rect.top + edge) {
+        const t = Math.min(1, (rect.top + edge - clientY) / edge);
+        stepY = -Math.ceil(maxStep * t);
+      } else if (clientY > rect.bottom - edge) {
+        const t = Math.min(1, (clientY - (rect.bottom - edge)) / edge);
+        stepY = Math.ceil(maxStep * t);
+      }
+      if (stepY !== 0) {
+        cards.scrollTop += stepY;
+      }
+    }
+  }
+
+  /** Keep scrolling if the pointer stays in the edge band without moving. */
+  private startDragScrollLoop(): void {
+    if (this.dragScrollRaf !== null) {
+      return;
+    }
+    const tick = (): void => {
+      this.dragScrollRaf = null;
+      if (!this.taskPointer?.active || !this.dragPointerPos) {
+        return;
+      }
+      this.applyDragAutoScroll(this.dragPointerPos.x, this.dragPointerPos.y);
+      this.updateDragVisuals(this.dragPointerPos.x, this.dragPointerPos.y);
+      this.dragScrollRaf = requestAnimationFrame(tick);
+    };
+    this.dragScrollRaf = requestAnimationFrame(tick);
+  }
+
+  private stopDragScrollLoop(): void {
+    if (this.dragScrollRaf !== null) {
+      cancelAnimationFrame(this.dragScrollRaf);
+      this.dragScrollRaf = null;
+    }
+    this.dragPointerPos = null;
+  }
+
+  private cardsListUnderPoint(x: number, y: number): HTMLElement | null {
+    const stack = document.elementsFromPoint(x, y);
+    for (const el of stack) {
+      if (!(el instanceof Element)) {
+        continue;
+      }
+      const cards = el.closest('.board-column__cards');
+      if (cards instanceof HTMLElement) {
+        return cards;
+      }
+    }
+    return null;
   }
 
   private statusUnderPoint(x: number, y: number): string | null {

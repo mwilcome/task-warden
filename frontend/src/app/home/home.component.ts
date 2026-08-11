@@ -86,6 +86,11 @@ export class HomeComponent {
     await this.session.newProject();
   }
 
+  async onNewBrowserOnlyProject(): Promise<void> {
+    this.projectsMenuOpen.set(false);
+    await this.session.newBrowserOnlyProject();
+  }
+
   async onOpenProject(): Promise<void> {
     this.projectsMenuOpen.set(false);
     await this.session.openProject();

@@ -57,6 +57,8 @@ describe('ProjectSessionService', () => {
           useValue: {
             list: signal([]).asReadonly(),
             record: vi.fn(async () => undefined),
+            recordFile: vi.fn(async () => undefined),
+            recordBrowser: vi.fn(async () => undefined),
             getHandle: vi.fn(async () => null),
             getMeta: vi.fn(async () => null),
             remove: vi.fn(async () => undefined),
@@ -338,6 +340,33 @@ describe('ProjectSessionService', () => {
     expect(session.uiError()).toContain(INVALID_FILE_MESSAGE);
   });
 
+  it('reloadFromDisk always takes disk even when browser cache differs', async () => {
+    const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
+    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    await session.newProject();
+    const projectId = session.project()!.id;
+    await session.setProjectName('BrowserAhead');
+
+    const disk = createEmptyProject();
+    disk.id = projectId;
+    disk.name = 'FromDiskWins';
+    cache.get.mockResolvedValue({
+      id: projectId,
+      project: { ...session.project()! },
+      fileName: 'x.tw.json',
+      cachedAt: new Date().toISOString(),
+    });
+    files.readHandle.mockResolvedValue({
+      text: JSON.stringify(disk),
+      fileName: 'x.tw.json',
+    });
+
+    const result = await session.reloadFromDisk();
+    expect(result.ok).toBe(true);
+    expect(session.project()?.name).toBe('FromDiskWins');
+    expect(session.cacheConflict()).toBeNull();
+  });
+
   it('updateProject writes browser cache when a file is attached', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
     files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
@@ -392,6 +421,16 @@ describe('ProjectSessionService', () => {
     expect(session.hasWorkspace()).toBe(false);
     expect(session.hasFile()).toBe(false);
     expect(session.lastProject()?.name).toBe('FromCache');
+  });
+
+  it('newBrowserOnlyProject opens a workspace without a file handle', async () => {
+    const result = await session.newBrowserOnlyProject();
+    expect(result.ok).toBe(true);
+    expect(session.hasFile()).toBe(false);
+    expect(session.cacheOnly()).toBe(true);
+    expect(session.hasWorkspace()).toBe(true);
+    expect(session.project()?.name).toBe('Untitled Project');
+    expect(cache.put).toHaveBeenCalled();
   });
 
   it('openLastProject loads from cache when no file handle', async () => {
