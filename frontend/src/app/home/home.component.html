@@ -128,14 +128,16 @@
             >
               New browser project
             </button>
-            <button
-              type="button"
-              class="projects-menu__item"
-              role="menuitem"
-              (click)="onDownloadProjectFileGuide()"
-            >
-              Download project file guide (.md)
-            </button>
+            @if (session.fileSystemSupported) {
+              <button
+                type="button"
+                class="projects-menu__item"
+                role="menuitem"
+                (click)="onDownloadProjectFileGuide()"
+              >
+                Download project file guide (.md)
+              </button>
+            }
 
             <div class="projects-menu__sep" role="separator"></div>
             <p class="projects-menu__heading flush">Recent</p>
@@ -243,8 +245,7 @@
           @if (!session.fileSystemSupported) {
             <div class="alert alert-info" role="status">
               This browser cannot open or save project files on disk. Use
-              <strong>New browser project</strong> (works on Safari and iPhone). Data stays in this
-              browser; re-open from Recent after a refresh.
+              <strong>New browser project</strong> (works on Safari and iPhone).
             </div>
           }
 
@@ -257,16 +258,13 @@
             </div>
           }
 
-          <p class="open-prompt__browser-help muted flush">
-            @if (session.fileSystemSupported) {
+          @if (session.fileSystemSupported) {
+            <p class="open-prompt__browser-help muted flush">
               <strong>New Project</strong> and <strong>Open Project</strong> use a project file on
               your computer. <strong>New browser project</strong> stores a board only in this
-              browser. Re-open either kind from Recent after a refresh.
-            } @else {
-              <strong>New browser project</strong> stores a board only in this browser. Re-open it
-              from Recent after a refresh.
-            }
-          </p>
+              browser.
+            </p>
+          }
           <div class="open-prompt__actions">
             @if (session.fileSystemSupported) {
               <button
@@ -298,19 +296,21 @@
             </button>
           </div>
 
-          <div class="open-prompt__guide">
-            <p class="open-prompt__guide-help muted flush">
-              Download a short guide (Markdown file) that explains the project file format. Give
-              it to a local AI that edits project files on your computer.
-            </p>
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm btn-block"
-              (click)="onDownloadProjectFileGuide()"
-            >
-              Download project file guide (.md)
-            </button>
-          </div>
+          @if (session.fileSystemSupported) {
+            <div class="open-prompt__guide">
+              <p class="open-prompt__guide-help muted flush">
+                Download a short guide (Markdown file) that explains the project file format. Give
+                it to a local AI that edits project files on your computer.
+              </p>
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm btn-block"
+                (click)="onDownloadProjectFileGuide()"
+              >
+                Download project file guide (.md)
+              </button>
+            </div>
+          }
 
           @if (session.recentProjects().length > 0) {
             <div class="open-prompt__recent">
