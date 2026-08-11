@@ -310,6 +310,43 @@ export class ProjectSessionService {
     }
   }
 
+  /**
+   * Re-read the open file handle from disk, validate, replace memory.
+   * On invalid file or I/O error: keep previous in-memory project, set uiError.
+   */
+  async reloadFromDisk(): Promise<SessionActionResult> {
+    if (!this.fileHandle) {
+      const message = 'No project file is open.';
+      this.uiErrorSignal.set(message);
+      return { ok: false, message };
+    }
+
+    this.busySignal.set(true);
+    this.uiErrorSignal.set(null);
+    try {
+      const { text, fileName } = await this.files.readHandle(this.fileHandle);
+      const validation = parseAndValidateProject(text);
+      if (!validation.ok) {
+        const message = validation.reason
+          ? `${validation.message}: ${validation.reason}`
+          : validation.message;
+        this.uiErrorSignal.set(message);
+        return { ok: false, message };
+      }
+
+      this.projectSignal.set(validation.project);
+      this.fileNameSignal.set(fileName);
+      this.saveErrorSignal.set(null);
+      return { ok: true };
+    } catch (error) {
+      const message = this.messageFrom(error);
+      this.uiErrorSignal.set(message);
+      return { ok: false, message };
+    } finally {
+      this.busySignal.set(false);
+    }
+  }
+
   /** Close session in memory only (does not delete the file). Next visit must re-open. */
   closeProject(): void {
     this.fileHandle = null;

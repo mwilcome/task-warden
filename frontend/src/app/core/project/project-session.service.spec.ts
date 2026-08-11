@@ -17,6 +17,7 @@ describe('ProjectSessionService', () => {
     isSupported: ReturnType<typeof vi.fn>;
     pickAndRead: ReturnType<typeof vi.fn>;
     pickLocationAndWrite: ReturnType<typeof vi.fn>;
+    readHandle: ReturnType<typeof vi.fn>;
     write: ReturnType<typeof vi.fn>;
   };
 
@@ -25,6 +26,7 @@ describe('ProjectSessionService', () => {
       isSupported: vi.fn(() => true),
       pickAndRead: vi.fn(),
       pickLocationAndWrite: vi.fn(),
+      readHandle: vi.fn(),
       write: vi.fn(async () => undefined),
     };
 
@@ -268,5 +270,41 @@ describe('ProjectSessionService', () => {
     await session.createTask({ title: 'Blocker', status: 'Todo' });
     const result = await session.deleteStatus('Todo');
     expect(result.ok).toBe(false);
+  });
+
+  it('reloadFromDisk replaces memory with validated disk content', async () => {
+    const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
+    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    await session.newProject();
+    await session.setProjectName('OnlyInMemory');
+
+    const disk = createEmptyProject();
+    disk.name = 'FromDisk';
+    files.readHandle.mockResolvedValue({
+      text: JSON.stringify(disk),
+      fileName: 'x.tw.json',
+    });
+
+    const result = await session.reloadFromDisk();
+    expect(result.ok).toBe(true);
+    expect(session.project()?.name).toBe('FromDisk');
+    expect(session.uiError()).toBeNull();
+  });
+
+  it('reloadFromDisk keeps memory when disk JSON is invalid', async () => {
+    const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
+    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    await session.newProject();
+    await session.setProjectName('KeepMe');
+
+    files.readHandle.mockResolvedValue({
+      text: '{ not json',
+      fileName: 'x.tw.json',
+    });
+
+    const result = await session.reloadFromDisk();
+    expect(result.ok).toBe(false);
+    expect(session.project()?.name).toBe('KeepMe');
+    expect(session.uiError()).toContain(INVALID_FILE_MESSAGE);
   });
 });

@@ -78,6 +78,10 @@ export class HomeComponent {
     await this.session.retrySave();
   }
 
+  async onReloadFromDisk(): Promise<void> {
+    await this.session.reloadFromDisk();
+  }
+
   onDismissUiError(): void {
     this.session.clearUiError();
   }

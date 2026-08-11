@@ -8,11 +8,18 @@
 }
 
 @if (!session.hasProject()) {
-  <div class="page page-center">
+  <div class="page page-center page--landing">
     <div class="landing stack">
       <div class="landing__brand">
-        <p class="landing__eyebrow muted flush">Local-first · zero accounts</p>
-        <h1>Task Warden</h1>
+        <div class="brand-lockup brand-lockup--hero" aria-hidden="false">
+          <span class="brand-mark" aria-hidden="true">
+            <span class="brand-mark__glyph">TW</span>
+          </span>
+          <div class="brand-lockup__text">
+            <p class="landing__eyebrow flush">Local-first · zero accounts</p>
+            <h1 class="brand-wordmark">Task Warden</h1>
+          </div>
+        </div>
         <p class="muted landing__lede">
           One project is one <code class="inline-code">.tw.json</code> file on your disk. Open the
           site, work immediately, auto-save locally. Built so a local AI can read the same file.
@@ -104,13 +111,27 @@
   <div class="page page--board">
     <header class="app-header">
       <div class="row app-header__left">
-        <span class="app-header__brand">Task Warden</span>
+        <div class="brand-lockup brand-lockup--header">
+          <span class="brand-mark brand-mark--sm" aria-hidden="true">
+            <span class="brand-mark__glyph">TW</span>
+          </span>
+          <span class="brand-wordmark brand-wordmark--sm">Task Warden</span>
+        </div>
         <span class="muted app-header__switcher" title="Coming later">Projects ▾</span>
       </div>
       <div class="row">
         @if (session.fileName(); as name) {
           <span class="muted app-header__file" title="Open file">{{ name }}</span>
         }
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          title="Re-read the open file from disk"
+          [disabled]="session.busy()"
+          (click)="onReloadFromDisk()"
+        >
+          Reload
+        </button>
         <button type="button" class="btn btn-ghost btn-sm" (click)="onCloseProject()">
           Close
         </button>
@@ -156,7 +177,7 @@
     }
 
     <main class="app-main app-main--board">
-      <div class="container-wide board-wrap">
+      <div class="board-wrap">
         <app-board />
       </div>
     </main>

@@ -84,6 +84,13 @@ export class ProjectFileRepository {
     }
   }
 
+  /** Re-read text from an existing file handle (fresh from disk). */
+  async readHandle(handle: FileSystemFileHandle): Promise<{ text: string; fileName: string }> {
+    const file = await handle.getFile();
+    const text = await file.text();
+    return { text, fileName: file.name || handle.name };
+  }
+
   /** Write the entire project object to an existing file handle. */
   async write(handle: FileSystemFileHandle, project: TwProject): Promise<void> {
     const writable = await handle.createWritable();
