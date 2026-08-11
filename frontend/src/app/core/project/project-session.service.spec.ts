@@ -1,9 +1,11 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   FileSystemUnsupportedError,
   ProjectFileRepository,
   UserCancelledFilePickerError,
 } from '../fs/project-file.repository';
+import { RecentProjectsService } from '../fs/recent-projects.service';
 import { createEmptyProject } from './create-empty-project';
 import { INVALID_FILE_MESSAGE, SCHEMA_VERSION } from './project.types';
 import {
@@ -34,6 +36,17 @@ describe('ProjectSessionService', () => {
       providers: [
         ProjectSessionService,
         { provide: ProjectFileRepository, useValue: files },
+        {
+          provide: RecentProjectsService,
+          useValue: {
+            list: signal([]).asReadonly(),
+            record: vi.fn(async () => undefined),
+            getHandle: vi.fn(async () => null),
+            getMeta: vi.fn(async () => null),
+            remove: vi.fn(async () => undefined),
+            refresh: vi.fn(async () => undefined),
+          },
+        },
       ],
     });
     session = TestBed.inject(ProjectSessionService);
@@ -54,20 +67,21 @@ describe('ProjectSessionService', () => {
 
     const result = await session.newProject();
     expect(result.ok).toBe(true);
-    expect(session.hasProject()).toBe(true);
+    expect(session.hasFile()).toBe(true);
     expect(session.fileName()).toBe('untitled.tw.json');
     expect(session.project()?.version).toBe(SCHEMA_VERSION);
     expect(session.saveError()).toBeNull();
   });
 
-  it('newProject cancelled leaves no project open', async () => {
+  it('newProject cancelled keeps draft board without a file', async () => {
     files.pickLocationAndWrite.mockRejectedValue(new UserCancelledFilePickerError());
     const result = await session.newProject();
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.cancelled).toBe(true);
     }
-    expect(session.hasProject()).toBe(false);
+    expect(session.hasFile()).toBe(false);
+    expect(session.project()).toBeTruthy();
   });
 
   it('openProject loads valid file into session', async () => {
@@ -94,11 +108,9 @@ describe('ProjectSessionService', () => {
 
     const result = await session.openProject();
     expect(result.ok).toBe(false);
-    expect(session.hasProject()).toBe(false);
-    expect(session.project()).toBeNull();
-    expect(session.fileName()).toBeNull();
+    expect(session.hasFile()).toBe(false);
+    expect(session.project()).toBeTruthy();
     expect(session.uiError()).toContain(INVALID_FILE_MESSAGE);
-    // User can still recover on the landing path (Story L).
     expect(session.uiError()?.startsWith(INVALID_FILE_MESSAGE)).toBe(true);
   });
 
@@ -156,13 +168,15 @@ describe('ProjectSessionService', () => {
     expect(session.saveError()).toBeNull();
   });
 
-  it('closeProject clears session (re-open required next visit)', async () => {
+  it('closeProject detaches file and resets to empty draft board', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
     files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
     await session.newProject();
     session.closeProject();
-    expect(session.hasProject()).toBe(false);
+    expect(session.hasFile()).toBe(false);
     expect(session.fileName()).toBeNull();
+    expect(session.project()).toBeTruthy();
+    expect(session.project()?.tasks).toEqual([]);
   });
 
   it('surfaces unsupported browser message', async () => {

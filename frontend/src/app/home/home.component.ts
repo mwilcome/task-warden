@@ -1,6 +1,7 @@
 import {
   Component,
   ElementRef,
+  HostListener,
   effect,
   inject,
   signal,
@@ -12,8 +13,7 @@ import { INVALID_FILE_MESSAGE } from '../core/project/project.types';
 import { ProjectSessionService } from '../core/project/project-session.service';
 
 /**
- * Landing (no file) and project shell with board when a file is open.
- * Stories L + M: empty/error recovery + keyboard-friendly name edit.
+ * Board shell: always on-page board, open-file overlay, header Projects menu.
  * Styles: global classes only (src/styles.scss).
  */
 @Component({
@@ -27,18 +27,14 @@ export class HomeComponent {
   protected readonly editingName = signal(false);
   protected readonly nameDraft = signal('');
   protected readonly nameError = signal<string | null>(null);
+  protected readonly projectsMenuOpen = signal(false);
 
   private readonly nameInput = viewChild<ElementRef<HTMLInputElement>>('nameInput');
+  private readonly projectsMenuRoot = viewChild<ElementRef<HTMLElement>>('projectsMenu');
 
   constructor() {
     effect(() => {
       const project = this.session.project();
-      if (!project) {
-        this.editingName.set(false);
-        this.nameDraft.set('');
-        this.nameError.set(null);
-        return;
-      }
       if (!this.editingName()) {
         this.nameDraft.set(project.name);
       }
@@ -48,7 +44,6 @@ export class HomeComponent {
       if (!this.editingName()) {
         return;
       }
-      // Defer until the input is in the DOM.
       queueMicrotask(() => {
         this.nameInput()?.nativeElement.focus();
         this.nameInput()?.nativeElement.select();
@@ -56,18 +51,47 @@ export class HomeComponent {
     });
   }
 
-  /** True when the last UI error is a validation/open failure on a .tw.json file. */
   protected get isInvalidFileError(): boolean {
     const err = this.session.uiError();
     return !!err && err.startsWith(INVALID_FILE_MESSAGE);
   }
 
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    if (!this.projectsMenuOpen()) {
+      return;
+    }
+    const root = this.projectsMenuRoot()?.nativeElement;
+    if (root && !root.contains(event.target as Node)) {
+      this.projectsMenuOpen.set(false);
+    }
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.projectsMenuOpen()) {
+      this.projectsMenuOpen.set(false);
+    }
+  }
+
+  toggleProjectsMenu(event: Event): void {
+    event.stopPropagation();
+    this.projectsMenuOpen.update((open) => !open);
+  }
+
   async onNewProject(): Promise<void> {
+    this.projectsMenuOpen.set(false);
     await this.session.newProject();
   }
 
   async onOpenProject(): Promise<void> {
+    this.projectsMenuOpen.set(false);
     await this.session.openProject();
+  }
+
+  async onOpenRecent(projectId: string): Promise<void> {
+    this.projectsMenuOpen.set(false);
+    await this.session.openRecent(projectId);
   }
 
   onCloseProject(): void {
@@ -86,11 +110,20 @@ export class HomeComponent {
     this.session.clearUiError();
   }
 
+  onDismissRecentFailure(): void {
+    this.session.dismissRecentFailure();
+  }
+
+  async onRemoveFailedRecent(): Promise<void> {
+    await this.session.removeFailedRecent();
+  }
+
+  async onOpenFileForFailedRecent(): Promise<void> {
+    await this.session.openFileForFailedRecent();
+  }
+
   onStartEditName(): void {
     const project = this.session.project();
-    if (!project) {
-      return;
-    }
     this.nameDraft.set(project.name);
     this.nameError.set(null);
     this.editingName.set(true);
@@ -113,8 +146,7 @@ export class HomeComponent {
   }
 
   private cancelNameEdit(): void {
-    const project = this.session.project();
-    this.nameDraft.set(project?.name ?? '');
+    this.nameDraft.set(this.session.project().name);
     this.nameError.set(null);
     this.editingName.set(false);
   }

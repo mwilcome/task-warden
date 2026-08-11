@@ -4,6 +4,7 @@ import {
   ProjectFileRepository,
   UserCancelledFilePickerError,
 } from '../fs/project-file.repository';
+import { RecentProjectsService } from '../fs/recent-projects.service';
 import { createEmptyProject } from './create-empty-project';
 import { INVALID_FILE_MESSAGE, type TwProject } from './project.types';
 import {
@@ -34,30 +35,46 @@ export type SessionActionResult =
   | { ok: true }
   | { ok: false; message: string; cancelled?: boolean };
 
+/** Recoverable failure when opening a recent project (missing file, etc.). */
+export type RecentOpenFailure = {
+  projectId: string;
+  name: string;
+  fileName: string;
+  kind: 'missing' | 'permission' | 'other';
+  message: string;
+};
+
 /**
  * Application service: open project session for the current browser tab.
- * Holds in-memory project + file handle; auto-saves after mutations.
- * File handle is NOT restored across reloads (MVP).
+ * Always holds an in-memory project (draft board like Draw.io untitled page).
+ * Auto-saves only when a file handle is attached.
  */
 @Injectable({ providedIn: 'root' })
 export class ProjectSessionService {
   private readonly files = inject(ProjectFileRepository);
+  private readonly recents = inject(RecentProjectsService);
 
-  private readonly projectSignal = signal<TwProject | null>(null);
+  /** Always a real project so the board (empty swimlanes) can show. */
+  private readonly projectSignal = signal<TwProject>(createEmptyProject());
   private readonly fileNameSignal = signal<string | null>(null);
   private readonly saveErrorSignal = signal<string | null>(null);
   private readonly uiErrorSignal = signal<string | null>(null);
   private readonly busySignal = signal(false);
-
-  private fileHandle: FileSystemFileHandle | null = null;
+  private readonly fileHandleSignal = signal<FileSystemFileHandle | null>(null);
+  private readonly recentFailureSignal = signal<RecentOpenFailure | null>(null);
 
   readonly project = this.projectSignal.asReadonly();
   readonly fileName = this.fileNameSignal.asReadonly();
   readonly saveError = this.saveErrorSignal.asReadonly();
   readonly uiError = this.uiErrorSignal.asReadonly();
   readonly busy = this.busySignal.asReadonly();
-  readonly hasProject = computed(() => this.projectSignal() !== null);
+  /** True when a disk file handle is attached (saved/opened). */
+  readonly hasFile = computed(() => this.fileHandleSignal() !== null);
+  /** @deprecated Prefer hasFile; project is always present for board chrome. */
+  readonly hasProject = computed(() => this.hasFile());
   readonly fileSystemSupported = this.files.isSupported();
+  readonly recentProjects = this.recents.list;
+  readonly recentFailure = this.recentFailureSignal.asReadonly();
 
   /**
    * New Project: create template in memory, prompt to save `.tw.json`, keep handle.
@@ -76,10 +93,7 @@ export class ProjectSessionService {
       const project = createEmptyProject();
       const suggested = `${this.slugFileName(project.name)}.tw.json`;
       const { handle, fileName } = await this.files.pickLocationAndWrite(project, suggested);
-      this.fileHandle = handle;
-      this.projectSignal.set(project);
-      this.fileNameSignal.set(fileName);
-      this.saveErrorSignal.set(null);
+      await this.attachFile(handle, project, fileName);
       return { ok: true };
     } catch (error) {
       if (error instanceof UserCancelledFilePickerError) {
@@ -116,10 +130,7 @@ export class ProjectSessionService {
         return { ok: false, message };
       }
 
-      this.fileHandle = opened.handle;
-      this.projectSignal.set(validation.project);
-      this.fileNameSignal.set(opened.fileName);
-      this.saveErrorSignal.set(null);
+      await this.attachFile(opened.handle, validation.project, opened.fileName);
       return { ok: true };
     } catch (error) {
       if (error instanceof UserCancelledFilePickerError) {
@@ -133,23 +144,123 @@ export class ProjectSessionService {
     }
   }
 
+  /** Open a recent project via stored file handle (Projects menu). */
+  async openRecent(projectId: string): Promise<SessionActionResult> {
+    this.uiErrorSignal.set(null);
+    this.recentFailureSignal.set(null);
+
+    const meta = await this.recents.getMeta(projectId);
+    const handle = await this.recents.getHandle(projectId);
+    if (!handle || !meta) {
+      await this.setRecentFailure({
+        projectId,
+        name: meta?.name ?? 'Project',
+        fileName: meta?.fileName ?? '',
+        kind: 'missing',
+        message: 'The file may have been moved or deleted.',
+      });
+      return { ok: false, message: 'The file may have been moved or deleted.' };
+    }
+
+    this.busySignal.set(true);
+    try {
+      const permitted = await this.ensureReadPermission(handle);
+      if (!permitted) {
+        await this.setRecentFailure({
+          projectId,
+          name: meta.name,
+          fileName: meta.fileName,
+          kind: 'permission',
+          message: 'Permission to read that file was denied.',
+        });
+        return { ok: false, message: 'Permission to read that file was denied.' };
+      }
+      const { text, fileName } = await this.files.readHandle(handle);
+      const validation = parseAndValidateProject(text);
+      if (!validation.ok) {
+        const message = validation.reason
+          ? `${validation.message}: ${validation.reason}`
+          : validation.message;
+        await this.setRecentFailure({
+          projectId,
+          name: meta.name,
+          fileName: meta.fileName,
+          kind: 'other',
+          message,
+        });
+        return { ok: false, message };
+      }
+      await this.attachFile(handle, validation.project, fileName);
+      this.recentFailureSignal.set(null);
+      return { ok: true };
+    } catch (error) {
+      const kind = this.isMissingFileError(error) ? 'missing' : 'other';
+      const message =
+        kind === 'missing'
+          ? 'The file may have been moved or deleted.'
+          : this.messageFrom(error);
+      await this.setRecentFailure({
+        projectId,
+        name: meta.name,
+        fileName: meta.fileName,
+        kind,
+        message,
+      });
+      return { ok: false, message };
+    } finally {
+      this.busySignal.set(false);
+    }
+  }
+
+  dismissRecentFailure(): void {
+    this.recentFailureSignal.set(null);
+  }
+
+  /** Remove the failed recent entry from history. */
+  async removeFailedRecent(): Promise<void> {
+    const failure = this.recentFailureSignal();
+    if (!failure) {
+      return;
+    }
+    await this.recents.remove(failure.projectId);
+    this.recentFailureSignal.set(null);
+  }
+
+  /** Open Project picker to recover a missing recent (new path). */
+  async openFileForFailedRecent(): Promise<SessionActionResult> {
+    const failure = this.recentFailureSignal();
+    this.recentFailureSignal.set(null);
+    const result = await this.openProject();
+    if (result.ok) {
+      if (failure && this.projectSignal().id !== failure.projectId) {
+        await this.recents.remove(failure.projectId);
+      }
+      return result;
+    }
+    // Cancelled or failed open: keep recovery panel available.
+    if (failure) {
+      this.recentFailureSignal.set(failure);
+    }
+    return result;
+  }
   /**
-   * Apply a pure mutation to the in-memory project, then auto-save the entire object.
-   * On save failure: keep memory, set non-blocking save banner (MVP).
+   * Apply a pure mutation to the in-memory project.
+   * Auto-saves to disk when a file handle exists; otherwise draft-only (no file yet).
    */
   async updateProject(
     mutator: (current: TwProject) => TwProject,
   ): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    if (!current || !this.fileHandle) {
-      return { ok: false, message: 'No project file is open.' };
-    }
-
     const next = mutator(structuredClone(current));
     this.projectSignal.set(next);
 
+    const handle = this.fileHandleSignal();
+    if (!handle) {
+      return { ok: true };
+    }
+
     try {
-      await this.files.write(this.fileHandle, next);
+      await this.files.write(handle, next);
       this.saveErrorSignal.set(null);
       return { ok: true };
     } catch {
@@ -161,9 +272,6 @@ export class ProjectSessionService {
   /** Story F: create task in a column and auto-save. */
   async createTask(input: CreateTaskInput): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    if (!current) {
-      return { ok: false, message: 'No project file is open.' };
-    }
     const built = buildNewTask(input, current.statuses);
     if (!built.ok) {
       return { ok: false, message: built.reason };
@@ -174,9 +282,6 @@ export class ProjectSessionService {
   /** Story G: update task fields and auto-save. */
   async saveTask(taskId: string, input: UpdateTaskInput): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    if (!current) {
-      return { ok: false, message: 'No project file is open.' };
-    }
     const existing = findTask(current, taskId);
     if (!existing) {
       return { ok: false, message: 'Task not found.' };
@@ -191,9 +296,6 @@ export class ProjectSessionService {
   /** Story H: delete task and auto-save. */
   async deleteTask(taskId: string): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    if (!current) {
-      return { ok: false, message: 'No project file is open.' };
-    }
     if (!findTask(current, taskId)) {
       return { ok: false, message: 'Task not found.' };
     }
@@ -203,9 +305,6 @@ export class ProjectSessionService {
   /** Story I: drag task to another column; auto-save. */
   async moveTask(taskId: string, newStatus: string): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    if (!current) {
-      return { ok: false, message: 'No project file is open.' };
-    }
     const moved = moveTaskToStatus(current, taskId, newStatus);
     if (!moved.ok) {
       return { ok: false, message: moved.reason };
@@ -219,15 +318,11 @@ export class ProjectSessionService {
   /** Story J: rename project; auto-save. */
   async setProjectName(name: string): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    if (!current) {
-      return { ok: false, message: 'No project file is open.' };
-    }
     const renamed = renameProject(current, name);
     if (!renamed.ok) {
       return { ok: false, message: renamed.reason };
     }
     if (renamed.value === current || renamed.value.name === current.name) {
-      // Still normalize display if only whitespace differed after trim of same name
       if (renamed.value.name !== current.name) {
         return this.updateProject(() => renamed.value);
       }
@@ -239,9 +334,6 @@ export class ProjectSessionService {
   /** Story K: append status column. */
   async addStatus(name: string): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    if (!current) {
-      return { ok: false, message: 'No project file is open.' };
-    }
     const result = addStatus(current, name);
     if (!result.ok) {
       return { ok: false, message: result.reason };
@@ -252,9 +344,6 @@ export class ProjectSessionService {
   /** Story K: rename status + task status values. */
   async renameStatus(oldName: string, newName: string): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    if (!current) {
-      return { ok: false, message: 'No project file is open.' };
-    }
     const result = renameStatus(current, oldName, newName);
     if (!result.ok) {
       return { ok: false, message: result.reason };
@@ -268,9 +357,6 @@ export class ProjectSessionService {
   /** Story K: reorder statuses by index. */
   async reorderStatuses(fromIndex: number, toIndex: number): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    if (!current) {
-      return { ok: false, message: 'No project file is open.' };
-    }
     const result = reorderStatuses(current, fromIndex, toIndex);
     if (!result.ok) {
       return { ok: false, message: result.reason };
@@ -284,9 +370,6 @@ export class ProjectSessionService {
   /** Story K: delete empty status only. */
   async deleteStatus(name: string): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    if (!current) {
-      return { ok: false, message: 'No project file is open.' };
-    }
     const result = deleteStatus(current, name);
     if (!result.ok) {
       return { ok: false, message: result.reason };
@@ -297,11 +380,12 @@ export class ProjectSessionService {
   /** Retry writing the current in-memory project to the open handle. */
   async retrySave(): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    if (!current || !this.fileHandle) {
+    const handle = this.fileHandleSignal();
+    if (!handle) {
       return { ok: false, message: 'No project file is open.' };
     }
     try {
-      await this.files.write(this.fileHandle, current);
+      await this.files.write(handle, current);
       this.saveErrorSignal.set(null);
       return { ok: true };
     } catch {
@@ -315,7 +399,8 @@ export class ProjectSessionService {
    * On invalid file or I/O error: keep previous in-memory project, set uiError.
    */
   async reloadFromDisk(): Promise<SessionActionResult> {
-    if (!this.fileHandle) {
+    const handle = this.fileHandleSignal();
+    if (!handle) {
       const message = 'No project file is open.';
       this.uiErrorSignal.set(message);
       return { ok: false, message };
@@ -324,7 +409,7 @@ export class ProjectSessionService {
     this.busySignal.set(true);
     this.uiErrorSignal.set(null);
     try {
-      const { text, fileName } = await this.files.readHandle(this.fileHandle);
+      const { text, fileName } = await this.files.readHandle(handle);
       const validation = parseAndValidateProject(text);
       if (!validation.ok) {
         const message = validation.reason
@@ -334,9 +419,7 @@ export class ProjectSessionService {
         return { ok: false, message };
       }
 
-      this.projectSignal.set(validation.project);
-      this.fileNameSignal.set(fileName);
-      this.saveErrorSignal.set(null);
+      await this.attachFile(this.fileHandleSignal()!, validation.project, fileName);
       return { ok: true };
     } catch (error) {
       const message = this.messageFrom(error);
@@ -347,10 +430,10 @@ export class ProjectSessionService {
     }
   }
 
-  /** Close session in memory only (does not delete the file). Next visit must re-open. */
+  /** Detach file handle and reset to a fresh empty draft board (page stays visible). */
   closeProject(): void {
-    this.fileHandle = null;
-    this.projectSignal.set(null);
+    this.fileHandleSignal.set(null);
+    this.projectSignal.set(createEmptyProject());
     this.fileNameSignal.set(null);
     this.saveErrorSignal.set(null);
     this.uiErrorSignal.set(null);
@@ -358,6 +441,56 @@ export class ProjectSessionService {
 
   clearUiError(): void {
     this.uiErrorSignal.set(null);
+  }
+
+  private async setRecentFailure(failure: RecentOpenFailure): Promise<void> {
+    this.recentFailureSignal.set(failure);
+    this.uiErrorSignal.set(null);
+  }
+
+  private isMissingFileError(error: unknown): boolean {
+    if (typeof error !== 'object' || error === null) {
+      return false;
+    }
+    const name = 'name' in error ? String((error as { name: string }).name) : '';
+    const message = 'message' in error ? String((error as { message: string }).message) : '';
+    return (
+      name === 'NotFoundError' ||
+      /could not be found/i.test(message) ||
+      /not found/i.test(message) ||
+      /no longer exists/i.test(message)
+    );
+  }
+
+  private async attachFile(
+    handle: FileSystemFileHandle,
+    project: TwProject,
+    fileName: string,
+  ): Promise<void> {
+    this.fileHandleSignal.set(handle);
+    this.projectSignal.set(project);
+    this.fileNameSignal.set(fileName);
+    this.saveErrorSignal.set(null);
+    this.uiErrorSignal.set(null);
+    await this.recents.record(handle, project, fileName);
+  }
+
+  private async ensureReadPermission(handle: FileSystemFileHandle): Promise<boolean> {
+    const withPerm = handle as FileSystemFileHandle & {
+      queryPermission?: (opts: { mode: string }) => Promise<PermissionState>;
+      requestPermission?: (opts: { mode: string }) => Promise<PermissionState>;
+    };
+    if (typeof withPerm.queryPermission !== 'function') {
+      return true;
+    }
+    let state = await withPerm.queryPermission({ mode: 'readwrite' });
+    if (state === 'granted') {
+      return true;
+    }
+    if (typeof withPerm.requestPermission === 'function') {
+      state = await withPerm.requestPermission({ mode: 'readwrite' });
+    }
+    return state === 'granted';
   }
 
   private slugFileName(name: string): string {
