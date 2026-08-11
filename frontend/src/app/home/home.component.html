@@ -40,13 +40,50 @@
   </div>
 }
 
+@if (session.cacheConflict(); as conflict) {
+  <div class="cache-conflict" role="alertdialog" aria-labelledby="cache-conflict-title">
+    <div class="cache-conflict__text">
+      <p id="cache-conflict-title" class="cache-conflict__title flush">
+        This file differs from the browser copy
+      </p>
+      <p class="cache-conflict__body flush">
+        Choose which version to keep. Using the browser copy will overwrite the file on disk.
+      </p>
+      @if (conflict.fileName) {
+        <p class="cache-conflict__meta flush muted">
+          {{ conflict.disk.name }} · {{ conflict.fileName }}
+        </p>
+      }
+    </div>
+    <div class="cache-conflict__actions">
+      <button
+        type="button"
+        class="btn btn-primary btn-sm"
+        [disabled]="session.busy()"
+        (click)="onConflictUseDisk()"
+      >
+        Use file
+      </button>
+      <button
+        type="button"
+        class="btn btn-secondary btn-sm"
+        [disabled]="session.busy()"
+        (click)="onConflictUseCache()"
+      >
+        Use browser copy
+      </button>
+      <button type="button" class="btn btn-ghost btn-sm" (click)="onConflictCancel()">
+        Cancel
+      </button>
+    </div>
+  </div>
+}
+
 <div class="page page--board">
   <header class="app-header">
     <div class="row app-header__left">
       <div class="brand-lockup brand-lockup--header">
-        <span class="brand-mark brand-mark--header" aria-hidden="true">
-          <span class="brand-mark__glyph">TW</span>
-        </span>
+        <app-brand-mark size="header" />
         <span class="brand-wordmark brand-wordmark--sm">Task Warden</span>
       </div>
 
@@ -103,19 +140,23 @@
       </div>
     </div>
     <div class="row">
-      @if (session.hasFile()) {
+      @if (session.hasWorkspace()) {
         @if (session.fileName(); as name) {
           <span class="muted app-header__file" title="Open file">{{ name }}</span>
+        } @else if (session.cacheOnly()) {
+          <span class="muted app-header__file" title="Browser copy only">Browser copy</span>
         }
-        <button
-          type="button"
-          class="btn btn-ghost btn-sm"
-          title="Re-read the open file from disk"
-          [disabled]="session.busy()"
-          (click)="onReloadFromDisk()"
-        >
-          Reload
-        </button>
+        @if (session.hasFile()) {
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            title="Re-read the open file from disk"
+            [disabled]="session.busy()"
+            (click)="onReloadFromDisk()"
+          >
+            Reload
+          </button>
+        }
         <button type="button" class="btn btn-ghost btn-sm" (click)="onCloseProject()">
           Close
         </button>
@@ -170,14 +211,12 @@
       </div>
     </main>
 
-    @if (!session.hasFile()) {
+    @if (!session.hasWorkspace()) {
       <div class="open-prompt-layer">
         <div class="open-prompt-backdrop" aria-hidden="true"></div>
         <div class="open-prompt" role="dialog" aria-modal="true" aria-label="Project file">
           <div class="open-prompt__brand">
-            <span class="brand-mark brand-mark--sm" aria-hidden="true">
-              <span class="brand-mark__glyph">TW</span>
-            </span>
+            <app-brand-mark size="sm" />
             <p class="open-prompt__label flush">Project file</p>
           </div>
 
@@ -214,6 +253,38 @@
               Open Project
             </button>
           </div>
+
+          @if (session.lastProject(); as last) {
+            <div class="open-prompt__recent">
+              <p class="open-prompt__recent-heading flush">Last opened</p>
+              <button
+                type="button"
+                class="open-prompt__recent-btn"
+                [disabled]="session.busy()"
+                (click)="onOpenLastProject()"
+              >
+                <span class="open-prompt__recent-name">{{ last.name }}</span>
+                @if (last.fileName) {
+                  <span class="open-prompt__recent-file">{{ last.fileName }}</span>
+                }
+              </button>
+            </div>
+          } @else if (session.recentProjects().length > 0) {
+            <div class="open-prompt__recent">
+              <p class="open-prompt__recent-heading flush">Recent</p>
+              @for (recent of session.recentProjects().slice(0, 4); track recent.id) {
+                <button
+                  type="button"
+                  class="open-prompt__recent-btn"
+                  [disabled]="session.busy()"
+                  (click)="onOpenRecent(recent.id)"
+                >
+                  <span class="open-prompt__recent-name">{{ recent.name }}</span>
+                  <span class="open-prompt__recent-file">{{ recent.fileName }}</span>
+                </button>
+              }
+            </div>
+          }
 
           @if (session.busy()) {
             <p class="loading-line flush" aria-live="polite">Working…</p>

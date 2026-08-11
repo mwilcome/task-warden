@@ -11,6 +11,7 @@ import { FormsModule } from '@angular/forms';
 import { BoardComponent } from '../board/board.component';
 import { INVALID_FILE_MESSAGE } from '../core/project/project.types';
 import { ProjectSessionService } from '../core/project/project-session.service';
+import { BrandMarkComponent } from './brand-mark.component';
 
 /**
  * Board shell: always on-page board, open-file overlay, header Projects menu.
@@ -18,7 +19,7 @@ import { ProjectSessionService } from '../core/project/project-session.service';
  */
 @Component({
   selector: 'app-home',
-  imports: [BoardComponent, FormsModule],
+  imports: [BoardComponent, FormsModule, BrandMarkComponent],
   templateUrl: './home.component.html',
 })
 export class HomeComponent {
@@ -94,6 +95,11 @@ export class HomeComponent {
     await this.session.openRecent(projectId);
   }
 
+  async onOpenLastProject(): Promise<void> {
+    this.projectsMenuOpen.set(false);
+    await this.session.openLastProject();
+  }
+
   onCloseProject(): void {
     this.session.closeProject();
   }
@@ -120,6 +126,18 @@ export class HomeComponent {
 
   async onOpenFileForFailedRecent(): Promise<void> {
     await this.session.openFileForFailedRecent();
+  }
+
+  async onConflictUseDisk(): Promise<void> {
+    await this.session.resolveConflictUseDisk();
+  }
+
+  async onConflictUseCache(): Promise<void> {
+    await this.session.resolveConflictUseCache();
+  }
+
+  onConflictCancel(): void {
+    this.session.dismissConflict();
   }
 
   onStartEditName(): void {

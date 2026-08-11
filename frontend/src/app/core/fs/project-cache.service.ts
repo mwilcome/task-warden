@@ -1,0 +1,145 @@
+import { Injectable } from '@angular/core';
+import type { TwProject } from '../project/project.types';
+
+const DB_NAME = 'task-warden-cache';
+const DB_VERSION = 1;
+const STORE = 'projects';
+const LAST_ID_KEY = 'task-warden:last-project-id';
+
+export interface CachedProjectRecord {
+  id: string;
+  project: TwProject;
+  fileName: string | null;
+  cachedAt: string;
+}
+
+/**
+ * Local full-project JSON cache (IndexedDB) + last-project id (localStorage).
+ * Browser convenience only; disk `.tw.json` remains the AI source of truth when present.
+ */
+@Injectable({ providedIn: 'root' })
+export class ProjectCacheService {
+  private dbPromise: Promise<IDBDatabase> | null = null;
+
+  getLastProjectId(): string | null {
+    try {
+      return localStorage.getItem(LAST_ID_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  setLastProjectId(projectId: string | null): void {
+    try {
+      if (!projectId) {
+        localStorage.removeItem(LAST_ID_KEY);
+      } else {
+        localStorage.setItem(LAST_ID_KEY, projectId);
+      }
+    } catch {
+      /* private mode / quota */
+    }
+  }
+
+  async put(project: TwProject, fileName: string | null): Promise<void> {
+    try {
+      const db = await this.openDb();
+      const record: CachedProjectRecord = {
+        id: project.id,
+        project,
+        fileName,
+        cachedAt: new Date().toISOString(),
+      };
+      await this.idbPut(db, record);
+      this.setLastProjectId(project.id);
+    } catch {
+      /* cache is best-effort */
+    }
+  }
+
+  async get(projectId: string): Promise<CachedProjectRecord | null> {
+    try {
+      const db = await this.openDb();
+      return (await this.idbGet(db, projectId)) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  async remove(projectId: string): Promise<void> {
+    try {
+      const db = await this.openDb();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).delete(projectId);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      if (this.getLastProjectId() === projectId) {
+        this.setLastProjectId(null);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private openDb(): Promise<IDBDatabase> {
+    if (this.dbPromise) {
+      return this.dbPromise;
+    }
+    this.dbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'));
+      req.onsuccess = () => resolve(req.result);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) {
+          db.createObjectStore(STORE, { keyPath: 'id' });
+        }
+      };
+    });
+    return this.dbPromise;
+  }
+
+  private idbGet(db: IDBDatabase, id: string): Promise<CachedProjectRecord | undefined> {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).get(id);
+      req.onsuccess = () => resolve(req.result as CachedProjectRecord | undefined);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  private idbPut(db: IDBDatabase, record: CachedProjectRecord): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).put(record);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+}
+
+/** Stable compare for conflict detection (same project content; key-order safe). */
+export function projectsContentEqual(a: TwProject, b: TwProject): boolean {
+  return stableStringify(a) === stableStringify(b);
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(sortKeysDeep(value));
+}
+
+function sortKeysDeep(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortKeysDeep);
+  }
+  if (value !== null && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(obj).sort()) {
+      out[key] = sortKeysDeep(obj[key]);
+    }
+    return out;
+  }
+  return value;
+}

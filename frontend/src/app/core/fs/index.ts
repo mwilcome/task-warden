@@ -10,3 +10,9 @@ export {
   isAbortError,
   type TwFileSystemWindow,
 } from './file-system-access.types';
+export {
+  ProjectCacheService,
+  projectsContentEqual,
+  type CachedProjectRecord,
+} from './project-cache.service';
+export { RecentProjectsService, type RecentProjectMeta } from './recent-projects.service';

@@ -1,4 +1,13 @@
-import { Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  computed,
+  effect,
+  inject,
+  signal,
+  viewChild,
+  DestroyRef,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { buildBoardColumns } from '../core/project/board-model';
 import { ProjectSessionService } from '../core/project/project-session.service';
@@ -8,11 +17,34 @@ import {
   type TaskPanelMode,
 } from '../task-panel/task-panel.component';
 
-const DND_TASK_MIME = 'application/x-task-warden-task-id';
 const DND_STATUS_MIME = 'application/x-task-warden-status';
+/** Pixels of movement before a press becomes a task drag (keeps click-to-edit). */
+const TASK_DRAG_THRESHOLD_PX = 8;
+
+type TaskPointerSession = {
+  taskId: string;
+  title: string;
+  fromStatus: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  /** True after movement exceeds threshold */
+  active: boolean;
+  /** Element that received pointerdown (for release capture) */
+  target: HTMLElement;
+};
+
+type TaskGhost = {
+  title: string;
+  x: number;
+  y: number;
+  width: number;
+};
 
 /**
- * Kanban board: columns, cards, panels, task DnD, status management (Story K).
+ * Kanban board: columns, cards, panels, pointer task drag, status management.
+ * Task move uses pointer events (desktop + mobile). Column reorder still supports
+ * HTML5 drag on the title row plus ← → buttons.
  * Styles: global classes only (src/styles.scss).
  */
 @Component({
@@ -22,11 +54,13 @@ const DND_STATUS_MIME = 'application/x-task-warden-status';
 })
 export class BoardComponent {
   private readonly session = inject(ProjectSessionService);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly panel = signal<TaskPanelMode | null>(null);
   protected readonly dragOverStatus = signal<string | null>(null);
   protected readonly draggingTaskId = signal<string | null>(null);
   protected readonly draggingStatus = signal<string | null>(null);
+  protected readonly taskGhost = signal<TaskGhost | null>(null);
 
   protected readonly renamingStatus = signal<string | null>(null);
   protected readonly renameDraft = signal('');
@@ -38,8 +72,10 @@ export class BoardComponent {
     viewChild<ElementRef<HTMLInputElement>>('statusRenameInput');
   private readonly newStatusInput = viewChild<ElementRef<HTMLInputElement>>('newStatusInput');
 
-  /** Suppress card click after a successful task drag. */
-  private suppressClick = false;
+  private taskPointer: TaskPointerSession | null = null;
+  private readonly onWinPointerMove = (e: PointerEvent) => this.handleTaskPointerMove(e);
+  private readonly onWinPointerUp = (e: PointerEvent) => void this.handleTaskPointerUp(e);
+  private readonly onWinPointerCancel = (e: PointerEvent) => void this.handleTaskPointerUp(e);
 
   protected readonly columns = computed(() => {
     const project = this.session.project();
@@ -60,51 +96,171 @@ export class BoardComponent {
         queueMicrotask(() => this.newStatusInput()?.nativeElement.focus());
       }
     });
+
+    this.destroyRef.onDestroy(() => this.teardownTaskPointerListeners());
   }
 
   protected onAddTask(status: string): void {
     this.panel.set({ kind: 'create', status });
   }
 
-  protected onCardClick(task: TwTask): void {
-    if (this.suppressClick) {
-      this.suppressClick = false;
-      return;
+  protected onCardKeydown(event: KeyboardEvent, task: TwTask): void {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      this.panel.set({ kind: 'edit', task: { ...task } });
     }
-    this.panel.set({ kind: 'edit', task: { ...task } });
   }
 
   protected onPanelClosed(): void {
     this.panel.set(null);
   }
 
-  // --- Task drag (Story I) -------------------------------------------------
+  // --- Task pointer drag (desktop + mobile) --------------------------------
 
-  protected onTaskDragStart(event: DragEvent, task: TwTask): void {
-    if (!event.dataTransfer) {
+  protected onTaskPointerDown(event: PointerEvent, task: TwTask): void {
+    if (event.button !== 0 && event.pointerType === 'mouse') {
       return;
     }
-    event.dataTransfer.setData(DND_TASK_MIME, task.id);
-    event.dataTransfer.setData('text/plain', task.id);
-    event.dataTransfer.effectAllowed = 'move';
-    this.draggingTaskId.set(task.id);
-    this.draggingStatus.set(null);
-    this.suppressClick = false;
+    if (this.taskPointer) {
+      return;
+    }
+
+    const target = event.currentTarget as HTMLElement;
+    this.taskPointer = {
+      taskId: task.id,
+      title: task.title,
+      fromStatus: task.status,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+      target,
+    };
+
+    window.addEventListener('pointermove', this.onWinPointerMove, { passive: false });
+    window.addEventListener('pointerup', this.onWinPointerUp);
+    window.addEventListener('pointercancel', this.onWinPointerCancel);
   }
 
-  protected onTaskDragEnd(): void {
+  private handleTaskPointerMove(event: PointerEvent): void {
+    const session = this.taskPointer;
+    if (!session || event.pointerId !== session.pointerId) {
+      return;
+    }
+
+    const dx = event.clientX - session.startX;
+    const dy = event.clientY - session.startY;
+
+    if (!session.active) {
+      if (Math.hypot(dx, dy) < TASK_DRAG_THRESHOLD_PX) {
+        return;
+      }
+      session.active = true;
+      this.draggingTaskId.set(session.taskId);
+      this.draggingStatus.set(null);
+      try {
+        session.target.setPointerCapture(event.pointerId);
+      } catch {
+        /* some browsers may reject capture; window listeners still work */
+      }
+      document.body.classList.add('is-task-dragging');
+      const rect = session.target.getBoundingClientRect();
+      this.taskGhost.set({
+        title: session.title,
+        x: event.clientX - rect.width / 2,
+        y: event.clientY - rect.height / 2,
+        width: rect.width,
+      });
+    }
+
+    event.preventDefault();
+
+    const ghost = this.taskGhost();
+    if (ghost) {
+      this.taskGhost.set({
+        ...ghost,
+        x: event.clientX - ghost.width / 2,
+        y: event.clientY - 20,
+      });
+    }
+
+    const status = this.statusUnderPoint(event.clientX, event.clientY);
+    if (status !== this.dragOverStatus()) {
+      this.dragOverStatus.set(status);
+    }
+  }
+
+  private async handleTaskPointerUp(event: PointerEvent): Promise<void> {
+    const session = this.taskPointer;
+    if (!session || event.pointerId !== session.pointerId) {
+      return;
+    }
+
+    const wasActive = session.active;
+    const taskId = session.taskId;
+    const dropStatus = wasActive
+      ? this.statusUnderPoint(event.clientX, event.clientY)
+      : null;
+
+    this.teardownTaskPointerListeners();
+    try {
+      session.target.releasePointerCapture(event.pointerId);
+    } catch {
+      /* ignore */
+    }
+    this.taskPointer = null;
     this.draggingTaskId.set(null);
     this.dragOverStatus.set(null);
+    this.taskGhost.set(null);
+    document.body.classList.remove('is-task-dragging');
+
+    if (!wasActive) {
+      const project = this.session.project();
+      const task = project?.tasks.find((t) => t.id === taskId);
+      if (task) {
+        this.panel.set({ kind: 'edit', task: { ...task } });
+      }
+      return;
+    }
+
+    if (dropStatus && dropStatus !== session.fromStatus) {
+      await this.session.moveTask(taskId, dropStatus);
+    }
   }
 
-  // --- Column drop target (tasks + status reorder) -------------------------
+  private statusUnderPoint(x: number, y: number): string | null {
+    const stack = document.elementsFromPoint(x, y);
+    for (const el of stack) {
+      if (!(el instanceof Element)) {
+        continue;
+      }
+      const col = el.closest('[data-board-status]');
+      if (col) {
+        return col.getAttribute('data-board-status');
+      }
+    }
+    return null;
+  }
+
+  private teardownTaskPointerListeners(): void {
+    window.removeEventListener('pointermove', this.onWinPointerMove);
+    window.removeEventListener('pointerup', this.onWinPointerUp);
+    window.removeEventListener('pointercancel', this.onWinPointerCancel);
+  }
+
+  // --- Column drop target (status reorder via HTML5 only) ------------------
 
   protected onColumnDragOver(event: DragEvent, status: string): void {
+    if (!this.draggingStatus()) {
+      return;
+    }
     event.preventDefault();
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = 'move';
     }
-    this.dragOverStatus.set(status);
+    if (this.dragOverStatus() !== status) {
+      this.dragOverStatus.set(status);
+    }
   }
 
   protected onColumnDragLeave(event: DragEvent, status: string): void {
@@ -124,22 +280,11 @@ export class BoardComponent {
 
     const statusFrom =
       event.dataTransfer?.getData(DND_STATUS_MIME) || this.draggingStatus();
-    if (statusFrom) {
-      this.draggingStatus.set(null);
-      await this.dropStatusOn(statusFrom, status);
+    this.draggingStatus.set(null);
+    if (!statusFrom) {
       return;
     }
-
-    const taskId =
-      event.dataTransfer?.getData(DND_TASK_MIME) ||
-      event.dataTransfer?.getData('text/plain') ||
-      this.draggingTaskId();
-    this.draggingTaskId.set(null);
-    if (!taskId) {
-      return;
-    }
-    this.suppressClick = true;
-    await this.session.moveTask(taskId, status);
+    await this.dropStatusOn(statusFrom, status);
   }
 
   // --- Status management (Story K) -----------------------------------------

@@ -5,6 +5,7 @@ import {
   ProjectFileRepository,
   UserCancelledFilePickerError,
 } from '../fs/project-file.repository';
+import { ProjectCacheService } from '../fs/project-cache.service';
 import { RecentProjectsService } from '../fs/recent-projects.service';
 import { createEmptyProject } from './create-empty-project';
 import { INVALID_FILE_MESSAGE, SCHEMA_VERSION } from './project.types';
@@ -22,6 +23,13 @@ describe('ProjectSessionService', () => {
     readHandle: ReturnType<typeof vi.fn>;
     write: ReturnType<typeof vi.fn>;
   };
+  let cache: {
+    getLastProjectId: ReturnType<typeof vi.fn>;
+    setLastProjectId: ReturnType<typeof vi.fn>;
+    put: ReturnType<typeof vi.fn>;
+    get: ReturnType<typeof vi.fn>;
+    remove: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     files = {
@@ -31,11 +39,19 @@ describe('ProjectSessionService', () => {
       readHandle: vi.fn(),
       write: vi.fn(async () => undefined),
     };
+    cache = {
+      getLastProjectId: vi.fn(() => null),
+      setLastProjectId: vi.fn(),
+      put: vi.fn(async () => undefined),
+      get: vi.fn(async () => null),
+      remove: vi.fn(async () => undefined),
+    };
 
     TestBed.configureTestingModule({
       providers: [
         ProjectSessionService,
         { provide: ProjectFileRepository, useValue: files },
+        { provide: ProjectCacheService, useValue: cache },
         {
           provide: RecentProjectsService,
           useValue: {
@@ -320,5 +336,80 @@ describe('ProjectSessionService', () => {
     expect(result.ok).toBe(false);
     expect(session.project()?.name).toBe('KeepMe');
     expect(session.uiError()).toContain(INVALID_FILE_MESSAGE);
+  });
+
+  it('updateProject writes browser cache when a file is attached', async () => {
+    const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
+    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    await session.newProject();
+    cache.put.mockClear();
+
+    await session.updateProject((p) => ({ ...p, name: 'Cached' }));
+    expect(cache.put).toHaveBeenCalled();
+    const putArg = cache.put.mock.calls.at(-1)?.[0] as { name: string };
+    expect(putArg.name).toBe('Cached');
+  });
+
+  it('openProject surfaces conflict when cache disagrees with disk', async () => {
+    const disk = createEmptyProject();
+    disk.name = 'Disk';
+    const cached = { ...createEmptyProject(), id: disk.id, name: 'Browser' };
+    cache.get.mockResolvedValue({
+      id: disk.id,
+      project: cached,
+      fileName: 'demo.tw.json',
+      cachedAt: new Date().toISOString(),
+    });
+    files.pickAndRead.mockResolvedValue({
+      handle: { name: 'demo.tw.json' } as FileSystemFileHandle,
+      text: JSON.stringify(disk),
+      fileName: 'demo.tw.json',
+    });
+
+    const result = await session.openProject();
+    expect(result.ok).toBe(false);
+    expect(session.cacheConflict()).toBeTruthy();
+    expect(session.hasFile()).toBe(false);
+
+    const useDisk = await session.resolveConflictUseDisk();
+    expect(useDisk.ok).toBe(true);
+    expect(session.project()?.name).toBe('Disk');
+    expect(session.cacheConflict()).toBeNull();
+  });
+
+  it('bootstrap does not auto-open; only prepares last-project hint', async () => {
+    const project = createEmptyProject();
+    project.name = 'FromCache';
+    cache.getLastProjectId.mockReturnValue(project.id);
+    cache.get.mockResolvedValue({
+      id: project.id,
+      project,
+      fileName: 'from-cache.tw.json',
+      cachedAt: new Date().toISOString(),
+    });
+
+    await session.bootstrap();
+    expect(session.hasWorkspace()).toBe(false);
+    expect(session.hasFile()).toBe(false);
+    expect(session.lastProject()?.name).toBe('FromCache');
+  });
+
+  it('openLastProject loads from cache when no file handle', async () => {
+    const project = createEmptyProject();
+    project.name = 'FromCache';
+    cache.getLastProjectId.mockReturnValue(project.id);
+    cache.get.mockResolvedValue({
+      id: project.id,
+      project,
+      fileName: 'from-cache.tw.json',
+      cachedAt: new Date().toISOString(),
+    });
+
+    await session.bootstrap();
+    const result = await session.openLastProject();
+    expect(result.ok).toBe(true);
+    expect(session.project()?.name).toBe('FromCache');
+    expect(session.hasWorkspace()).toBe(true);
+    expect(session.cacheOnly()).toBe(true);
   });
 });

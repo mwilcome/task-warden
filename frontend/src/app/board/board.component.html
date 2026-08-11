@@ -6,6 +6,7 @@
   @for (column of columns(); track trackStatus($index, column)) {
     <section
       class="board-column"
+      [attr.data-board-status]="column.status"
       [class.board-column--drag-over]="dragOverStatus() === column.status"
       role="listitem"
       [attr.aria-label]="column.status"
@@ -95,11 +96,8 @@
             [class.task-card--dragging]="draggingTaskId() === task.id"
             role="button"
             tabindex="0"
-            draggable="true"
-            (dragstart)="onTaskDragStart($event, task)"
-            (dragend)="onTaskDragEnd()"
-            (click)="onCardClick(task)"
-            (keydown.enter)="onCardClick(task)"
+            (pointerdown)="onTaskPointerDown($event, task)"
+            (keydown)="onCardKeydown($event, task)"
           >
             <span class="task-card__title">{{ task.title }}</span>
             @if (task.points !== null) {
@@ -147,6 +145,18 @@
     }
   </div>
 </div>
+
+@if (taskGhost(); as ghost) {
+  <div
+    class="task-card-ghost"
+    [style.left.px]="ghost.x"
+    [style.top.px]="ghost.y"
+    [style.width.px]="ghost.width"
+    aria-hidden="true"
+  >
+    <span class="task-card__title">{{ ghost.title }}</span>
+  </div>
+}
 
 @if (panel(); as mode) {
   <app-task-panel [mode]="mode" (closed)="onPanelClosed()" />
