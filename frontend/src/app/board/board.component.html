@@ -109,6 +109,9 @@
         }
       </div>
 
+      <!-- Fills empty column space so board pan works there; only .task-card blocks pan. -->
+      <div class="board-column__pan" aria-hidden="true"></div>
+
       <button type="button" class="board-column__add" (click)="onAddTask(column.status)">
         + Add task
       </button>

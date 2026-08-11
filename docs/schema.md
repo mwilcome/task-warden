@@ -57,4 +57,4 @@ Keep valid JSON. Do not add new top-level fields. Use a new UUID v4 for each new
 
 ### In-app download
 
-Task Warden can download **project file guide for AI** (`task-warden-project-file-guide.md`) from the open dialog or the Projects menu. That guide is meant for a local AI that edits `.tw.json` on disk.
+Task Warden can **Download project file guide (.md)** from the start dialog or the Projects menu. That guide is meant for a local AI that edits project files on disk.

@@ -2,24 +2,31 @@ import { Injectable, signal } from '@angular/core';
 import type { TwProject } from '../project/project.types';
 
 const DB_NAME = 'task-warden';
-const DB_VERSION = 1;
+/** v2: recents may be file-backed or browser-only (no handle). */
+const DB_VERSION = 2;
 const STORE = 'recents';
 const MAX_RECENTS = 8;
+
+export type RecentProjectSource = 'file' | 'browser';
 
 export interface RecentProjectMeta {
   id: string;
   name: string;
-  fileName: string;
+  /** Disk file name when source is file; otherwise null. */
+  fileName: string | null;
+  /** How this project was last opened in this browser. */
+  source: RecentProjectSource;
   openedAt: string;
 }
 
 interface RecentProjectRecord extends RecentProjectMeta {
-  handle: FileSystemFileHandle;
+  /** Present when a disk file was opened at least once for this id. */
+  handle?: FileSystemFileHandle;
 }
 
 /**
- * Local recents list (IndexedDB + FileSystemFileHandle when available).
- * Supports Projects menu without cloud storage.
+ * Local recents: disk projects (with FileSystemFileHandle) and browser-only projects.
+ * Same browser only; no cloud.
  */
 @Injectable({ providedIn: 'root' })
 export class RecentProjectsService {
@@ -37,39 +44,71 @@ export class RecentProjectsService {
       const db = await this.openDb();
       const rows = await this.getAll(db);
       rows.sort((a, b) => b.openedAt.localeCompare(a.openedAt));
-      this.listSignal.set(
-        rows.slice(0, MAX_RECENTS).map(({ id, name, fileName, openedAt }) => ({
-          id,
-          name,
-          fileName,
-          openedAt,
-        })),
-      );
+      this.listSignal.set(rows.slice(0, MAX_RECENTS).map((row) => this.toMeta(row)));
     } catch {
       this.listSignal.set([]);
     }
   }
 
-  async record(
+  /** Record a disk-backed project (New/Open file). */
+  async recordFile(
     handle: FileSystemFileHandle,
     project: TwProject,
     fileName: string,
   ): Promise<void> {
     try {
       const db = await this.openDb();
+      const existing = await this.get(db, project.id);
       const record: RecentProjectRecord = {
         id: project.id,
         name: project.name,
         fileName: fileName || handle.name,
+        source: 'file',
         openedAt: new Date().toISOString(),
         handle,
+      };
+      // Preserve nothing else; file open is authoritative for this id.
+      if (existing && !record.handle) {
+        record.handle = existing.handle;
+      }
+      await this.put(db, record);
+      await this.trim(db);
+      await this.refresh();
+    } catch {
+      /* IndexedDB or handle clone may fail */
+    }
+  }
+
+  /** Record or bump a browser-only project (no disk file required). */
+  async recordBrowser(project: TwProject): Promise<void> {
+    try {
+      const db = await this.openDb();
+      const existing = await this.get(db, project.id);
+      const record: RecentProjectRecord = {
+        id: project.id,
+        name: project.name,
+        fileName: null,
+        source: 'browser',
+        openedAt: new Date().toISOString(),
+        // Keep a prior handle so the user can still open the disk file later via Open Project
+        // or if we add dual actions; open path uses source to pick cache vs handle.
+        handle: existing?.handle,
       };
       await this.put(db, record);
       await this.trim(db);
       await this.refresh();
     } catch {
-      /* IndexedDB or handle clone may fail; menu still works without recents */
+      /* ignore */
     }
+  }
+
+  /** @deprecated Prefer recordFile — kept for call sites during transition. */
+  async record(
+    handle: FileSystemFileHandle,
+    project: TwProject,
+    fileName: string,
+  ): Promise<void> {
+    return this.recordFile(handle, project, fileName);
   }
 
   async getHandle(projectId: string): Promise<FileSystemFileHandle | null> {
@@ -86,15 +125,7 @@ export class RecentProjectsService {
     try {
       const db = await this.openDb();
       const row = await this.get(db, projectId);
-      if (!row) {
-        return null;
-      }
-      return {
-        id: row.id,
-        name: row.name,
-        fileName: row.fileName,
-        openedAt: row.openedAt,
-      };
+      return row ? this.toMeta(row) : null;
     } catch {
       return null;
     }
@@ -113,6 +144,22 @@ export class RecentProjectsService {
     } catch {
       await this.refresh();
     }
+  }
+
+  private toMeta(row: RecentProjectRecord): RecentProjectMeta {
+    const source: RecentProjectSource =
+      row.source === 'browser' || row.source === 'file'
+        ? row.source
+        : row.handle
+          ? 'file'
+          : 'browser';
+    return {
+      id: row.id,
+      name: row.name,
+      fileName: row.fileName ?? (source === 'file' ? '' : null),
+      source,
+      openedAt: row.openedAt,
+    };
   }
 
   private openDb(): Promise<IDBDatabase> {

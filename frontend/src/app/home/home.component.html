@@ -102,21 +102,31 @@
 
         @if (projectsMenuOpen()) {
           <div class="projects-menu__panel" role="menu" aria-label="Projects">
+            @if (session.fileSystemSupported) {
+              <button
+                type="button"
+                class="projects-menu__item"
+                role="menuitem"
+                (click)="onNewProject()"
+              >
+                New Project
+              </button>
+              <button
+                type="button"
+                class="projects-menu__item"
+                role="menuitem"
+                (click)="onOpenProject()"
+              >
+                Open Project
+              </button>
+            }
             <button
               type="button"
               class="projects-menu__item"
               role="menuitem"
-              (click)="onNewProject()"
+              (click)="onNewBrowserOnlyProject()"
             >
-              New Project
-            </button>
-            <button
-              type="button"
-              class="projects-menu__item"
-              role="menuitem"
-              (click)="onOpenProject()"
-            >
-              Open Project
+              New browser project
             </button>
             <button
               type="button"
@@ -124,7 +134,7 @@
               role="menuitem"
               (click)="onDownloadProjectFileGuide()"
             >
-              Download project file guide for AI
+              Download project file guide (.md)
             </button>
 
             <div class="projects-menu__sep" role="separator"></div>
@@ -138,7 +148,9 @@
                 (click)="onOpenRecent(recent.id)"
               >
                 <span class="projects-menu__recent-name">{{ recent.name }}</span>
-                <span class="projects-menu__recent-file">{{ recent.fileName }}</span>
+                <span class="projects-menu__recent-file">{{
+                  recent.source === 'browser' ? 'Browser only' : recent.fileName || 'Project file'
+                }}</span>
               </button>
             } @empty {
               <p class="projects-menu__empty flush">No recent projects</p>
@@ -158,11 +170,11 @@
           <button
             type="button"
             class="btn btn-ghost btn-sm"
-            title="Re-read the open file from disk"
+            title="Replace the board with the current file on disk"
             [disabled]="session.busy()"
             (click)="onReloadFromDisk()"
           >
-            Reload
+            Reload from Disk
           </button>
         }
         <button type="button" class="btn btn-ghost btn-sm" (click)="onCloseProject()">
@@ -222,15 +234,17 @@
     @if (!session.hasWorkspace()) {
       <div class="open-prompt-layer">
         <div class="open-prompt-backdrop" aria-hidden="true"></div>
-        <div class="open-prompt" role="dialog" aria-modal="true" aria-label="Project file">
+        <div class="open-prompt" role="dialog" aria-modal="true" aria-label="Start project">
           <div class="open-prompt__brand">
             <app-brand-mark size="sm" />
-            <p class="open-prompt__label flush">Project file</p>
+            <p class="open-prompt__label flush">Start project</p>
           </div>
 
           @if (!session.fileSystemSupported) {
-            <div class="alert alert-error" role="alert">
-              Chrome or Edge is required for local project files.
+            <div class="alert alert-info" role="status">
+              This browser cannot open or save project files on disk. Use
+              <strong>New browser project</strong> (works on Safari and iPhone). Data stays in this
+              browser; re-open from Recent after a refresh.
             </div>
           }
 
@@ -243,58 +257,65 @@
             </div>
           }
 
+          <p class="open-prompt__browser-help muted flush">
+            @if (session.fileSystemSupported) {
+              <strong>New Project</strong> and <strong>Open Project</strong> use a project file on
+              your computer. <strong>New browser project</strong> stores a board only in this
+              browser. Re-open either kind from Recent after a refresh.
+            } @else {
+              <strong>New browser project</strong> stores a board only in this browser. Re-open it
+              from Recent after a refresh.
+            }
+          </p>
           <div class="open-prompt__actions">
+            @if (session.fileSystemSupported) {
+              <button
+                type="button"
+                class="btn btn-primary"
+                [disabled]="session.busy()"
+                (click)="onNewProject()"
+              >
+                New Project
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                [disabled]="session.busy()"
+                (click)="onOpenProject()"
+              >
+                Open Project
+              </button>
+            }
             <button
               type="button"
-              class="btn btn-primary"
-              [disabled]="session.busy() || !session.fileSystemSupported"
-              (click)="onNewProject()"
+              class="btn"
+              [class.btn-primary]="!session.fileSystemSupported"
+              [class.btn-secondary]="session.fileSystemSupported"
+              [disabled]="session.busy()"
+              (click)="onNewBrowserOnlyProject()"
             >
-              New Project
-            </button>
-            <button
-              type="button"
-              class="btn btn-secondary"
-              [disabled]="session.busy() || !session.fileSystemSupported"
-              (click)="onOpenProject()"
-            >
-              Open Project
+              New browser project
             </button>
           </div>
 
           <div class="open-prompt__guide">
+            <p class="open-prompt__guide-help muted flush">
+              Download a short guide (Markdown file) that explains the project file format. Give
+              it to a local AI that edits project files on your computer.
+            </p>
             <button
               type="button"
-              class="btn btn-ghost btn-sm btn-block"
+              class="btn btn-secondary btn-sm btn-block"
               (click)="onDownloadProjectFileGuide()"
             >
-              Download project file guide for AI
+              Download project file guide (.md)
             </button>
-            <p class="open-prompt__guide-help muted flush">
-              Saves a short markdown file that explains the .tw.json format. Give it to a local AI
-              that edits project files on your computer.
-            </p>
           </div>
 
-          @if (session.lastProject(); as last) {
-            <div class="open-prompt__recent">
-              <p class="open-prompt__recent-heading flush">Last opened</p>
-              <button
-                type="button"
-                class="open-prompt__recent-btn"
-                [disabled]="session.busy()"
-                (click)="onOpenLastProject()"
-              >
-                <span class="open-prompt__recent-name">{{ last.name }}</span>
-                @if (last.fileName) {
-                  <span class="open-prompt__recent-file">{{ last.fileName }}</span>
-                }
-              </button>
-            </div>
-          } @else if (session.recentProjects().length > 0) {
+          @if (session.recentProjects().length > 0) {
             <div class="open-prompt__recent">
               <p class="open-prompt__recent-heading flush">Recent</p>
-              @for (recent of session.recentProjects().slice(0, 4); track recent.id) {
+              @for (recent of session.recentProjects().slice(0, 8); track recent.id) {
                 <button
                   type="button"
                   class="open-prompt__recent-btn"
@@ -302,7 +323,11 @@
                   (click)="onOpenRecent(recent.id)"
                 >
                   <span class="open-prompt__recent-name">{{ recent.name }}</span>
-                  <span class="open-prompt__recent-file">{{ recent.fileName }}</span>
+                  <span class="open-prompt__recent-file">{{
+                    recent.source === 'browser'
+                      ? 'Browser only'
+                      : recent.fileName || 'Project file'
+                  }}</span>
                 </button>
               }
             </div>
