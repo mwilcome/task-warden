@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { BoardComponent } from '../board/board.component';
+import { downloadProjectFileGuide } from '../core/project/project-file-guide';
 import { INVALID_FILE_MESSAGE } from '../core/project/project.types';
 import { ProjectSessionService } from '../core/project/project-session.service';
 import { BrandMarkComponent } from './brand-mark.component';
@@ -98,6 +99,11 @@ export class HomeComponent {
   async onOpenLastProject(): Promise<void> {
     this.projectsMenuOpen.set(false);
     await this.session.openLastProject();
+  }
+
+  onDownloadProjectFileGuide(): void {
+    this.projectsMenuOpen.set(false);
+    downloadProjectFileGuide();
   }
 
   onCloseProject(): void {
