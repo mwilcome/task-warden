@@ -2,8 +2,6 @@
 
 ## `sample.tw.json`
 
-Valid Task Warden project file (schema **1.0.0**).
+A valid project file (schema 1.0.0).
 
-Use **Open Project** in the app and choose this file, or use it as a template for AI agents that edit `.tw.json` on disk.
-
-After external edits, re-open the file in the app (session handles are not restored across reloads).
+Open it in Task Warden with **Open Project**, or copy it as a starting file. After you change it outside the app, use **Reload** if the project is already open.

@@ -1,16 +1,14 @@
-# Domain: Project
+# `core/project`
 
-Bounded context for the `.tw.json` aggregate.
+Project model and session logic for `.tw.json`.
 
-| Kind | Files |
-|------|--------|
-| Types / constants | `project.types.ts` |
-| Factory | `create-empty-project.ts` |
-| Validation | `validate-project.ts` |
-| Tasks / statuses | `task-ops.ts`, `status-ops.ts`, `board-model.ts` |
-| Identity | `uuid.ts` |
-| Application session | `project-session.service.ts` |
+| Files | Role |
+|-------|------|
+| `project.types.ts` | Types and constants |
+| `create-empty-project.ts` | New project factory |
+| `validate-project.ts` | Parse and validate |
+| `task-ops.ts`, `status-ops.ts`, `board-model.ts` | Task and column changes |
+| `uuid.ts` | UUID v4 |
+| `project-session.service.ts` | Open, save, cache, session state |
 
-Domain modules are pure TypeScript (no DOM / File System Access). Session orchestrates domain + `core/fs`. Schema reference: repo `docs/schema.md`.
-
-Public API: `index.ts`.
+Public exports: `index.ts`. Schema: repo `docs/schema.md`.

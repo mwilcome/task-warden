@@ -1,8 +1,11 @@
-# docs/
+# Docs
 
-| Doc | Purpose |
-|-----|---------|
-| [architecture.md](./architecture.md) | Frontend DDD layout, folders, global SCSS rules |
-| [schema.md](./schema.md) | `.tw.json` shape and validation rules |
+Operator notes for running and shipping Task Warden. Not a contributor guide.
 
-The product runs in the browser. Backend docs can land here if a server is added later.
+| Doc | Contents |
+|-----|----------|
+| [run-and-deploy.md](./run-and-deploy.md) | Install, local run, production build, where output goes |
+| [architecture.md](./architecture.md) | Frontend folders, styling rules, layering |
+| [schema.md](./schema.md) | `.tw.json` fields and validation rules |
+
+The live product is the Angular app under `frontend/`. The `backend/` folder is unused for now.

@@ -1,6 +1,6 @@
-# Task Warden file schema (`*.tw.json`)
+# Project file schema (`*.tw.json`)
 
-**Version:** `1.0.0` (must match exactly)
+**Version:** `1.0.0` (exact match required)
 
 ## Shape
 
@@ -36,21 +36,21 @@
 |-------|------|
 | IDs | UUID v4 |
 | Timestamps | ISO-8601 UTC |
-| Done column | **Last** entry in `statuses` — never hard-code `"Done"` |
-| `closed` | Set when task status is the last status; `null` otherwise |
-| Edits | Always refresh task `updated` |
-| Points | Integer ≥ 0 or `null` |
-| Validation | Fail closed — invalid files are rejected, not repaired |
-| `aiInstructions` | Present on every file; the app does not rewrite it after create |
+| Done column | Last entry in `statuses` (do not hard-code the name `"Done"`) |
+| `closed` | Set when the task is in the last status; otherwise `null` |
+| Edits | Update task `updated` on every change |
+| Points | Integer ≥ 0, or `null` |
+| Validation | Invalid files are rejected; the app does not repair them |
+| `aiInstructions` | Required on every file; the app does not change this string after create |
 
-## Defaults (new project)
+## Defaults for a new project
 
 - `name`: `"Untitled Project"`
 - `statuses`: `["Todo", "In Progress", "Done"]`
 - `tasks`: `[]`
 - `owner` / `startDate` / `endDate`: `null`
-- `aiInstructions`: locked string defined in `frontend/src/app/core/project/project.types.ts`
+- `aiInstructions`: fixed text from `frontend/src/app/core/project/project.types.ts`
 
-## For AI tools
+## Editing the file outside the app
 
-Read `aiInstructions` on the file, keep valid JSON, do not invent top-level fields, generate a new UUID v4 for every new task, and prefer short task titles.
+Keep valid JSON. Do not add new top-level fields. Use a new UUID v4 for each new task. Prefer short task titles. Read `aiInstructions` on the file for the full edit rules the file expects.
