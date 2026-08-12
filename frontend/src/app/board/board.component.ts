@@ -69,6 +69,8 @@ export class BoardComponent {
   protected readonly renamingStatus = signal<string | null>(null);
   protected readonly renameDraft = signal('');
   protected readonly statusError = signal<string | null>(null);
+  /** Enter and blur both call commitRename; ignore the second while the first await is open. */
+  private renameCommitInFlight = false;
   protected readonly addingStatus = signal(false);
   protected readonly newStatusName = signal('');
 
@@ -444,16 +446,21 @@ export class BoardComponent {
   }
 
   protected async commitRename(oldName: string): Promise<void> {
-    if (this.renamingStatus() !== oldName) {
+    if (this.renamingStatus() !== oldName || this.renameCommitInFlight) {
       return;
     }
+    this.renameCommitInFlight = true;
     this.statusError.set(null);
-    const result = await this.session.renameStatus(oldName, this.renameDraft());
-    if (!result.ok) {
-      this.statusError.set(result.message);
-      return;
+    try {
+      const result = await this.session.renameStatus(oldName, this.renameDraft());
+      if (!result.ok) {
+        this.statusError.set(result.message);
+        return;
+      }
+      this.cancelRename();
+    } finally {
+      this.renameCommitInFlight = false;
     }
-    this.cancelRename();
   }
 
   protected async onDeleteStatus(status: string): Promise<void> {
