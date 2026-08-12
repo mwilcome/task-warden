@@ -1,8 +1,3 @@
-/**
- * Story N — local-AI smoke test.
- * Simulates an external agent: read .tw.json, follow aiInstructions, add + edit a task.
- * Does not use the Angular UI; only the same domain rules the file format encodes.
- */
 import { createEmptyProject } from './create-empty-project';
 import { AI_INSTRUCTIONS, SCHEMA_VERSION } from './project.types';
 import {
@@ -13,7 +8,7 @@ import {
 } from './task-ops';
 import { parseAndValidateProject, validateProject } from './validate-project';
 
-describe('Story N — local AI file smoke test', () => {
+describe('local AI file smoke test', () => {
   it('new project embeds locked aiInstructions and validates', () => {
     const project = createEmptyProject();
     expect(project.version).toBe(SCHEMA_VERSION);
@@ -24,11 +19,9 @@ describe('Story N — local AI file smoke test', () => {
   });
 
   it('AI can read aiInstructions and add a task on disk-shaped JSON', () => {
-    // 1. App (or user) created a file
     const onDisk = createEmptyProject();
     const raw = JSON.stringify(onDisk, null, 2);
 
-    // 2. AI opens the file
     const opened = parseAndValidateProject(raw);
     expect(opened.ok).toBe(true);
     if (!opened.ok) {
@@ -36,7 +29,6 @@ describe('Story N — local AI file smoke test', () => {
     }
     expect(opened.project.aiInstructions).toBe(AI_INSTRUCTIONS);
 
-    // 3. AI follows instructions: new uuid, status in list, timestamps, closed if last
     const built = buildNewTask(
       {
         title: 'AI-added task',
@@ -76,7 +68,6 @@ describe('Story N — local AI file smoke test', () => {
     }
     project = addTask(project, created.value);
 
-    // AI moves task to last status per aiInstructions
     const later = '2026-08-01T12:00:00.000Z';
     const edited = applyTaskUpdate(
       created.value,

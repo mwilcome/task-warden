@@ -1,12 +1,11 @@
 import type { TwProject, TwTask } from './project.types';
 import { createUuidV4 } from './uuid';
 
-/** ISO-8601 UTC timestamp now. */
 export function utcNowIso(): string {
   return new Date().toISOString();
 }
 
-/** Last entry in statuses = done (never hard-code "Done"). */
+/** Last statuses entry is done; do not hard-code the word "Done". */
 export function lastStatus(statuses: string[]): string | null {
   if (statuses.length === 0) {
     return null;
@@ -19,9 +18,6 @@ export function isDoneStatus(statuses: string[], status: string): boolean {
   return last !== null && status === last;
 }
 
-/**
- * closed = now when status is last; null when not last.
- */
 export function closedForStatus(
   statuses: string[],
   status: string,
@@ -64,7 +60,6 @@ function normalizePoints(points: number | null | undefined): TaskOpResult<number
   return { ok: true, value: points };
 }
 
-/** Build a new task for a column status. */
 export function buildNewTask(
   input: CreateTaskInput,
   statuses: string[],
@@ -96,7 +91,7 @@ export function buildNewTask(
   return { ok: true, value: task };
 }
 
-/** Apply field updates; always refresh updated; closed follows last-status rule. */
+/** Sets `updated`; `closed` follows the last-status rule. */
 export function applyTaskUpdate(
   existing: TwTask,
   input: UpdateTaskInput,
@@ -153,10 +148,6 @@ export function findTask(project: TwProject, taskId: string): TwTask | undefined
   return project.tasks.find((t) => t.id === taskId);
 }
 
-/**
- * Move task to another status (Story I). Same closed/updated rules as edit.
- * No-op success if status unchanged.
- */
 export function moveTaskToStatus(
   project: TwProject,
   taskId: string,
@@ -191,7 +182,6 @@ export function moveTaskToStatus(
   return { ok: true, value: replaceTask(project, updated.value) };
 }
 
-/** Rename project (Story J). Empty names rejected. */
 export function renameProject(
   project: TwProject,
   name: string,

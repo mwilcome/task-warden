@@ -7,10 +7,6 @@ import {
 } from './project.types';
 import { createUuidV4 } from './uuid';
 
-/**
- * Returns a brand-new valid Task Warden project.
- * Always embeds the locked aiInstructions and schema version 1.0.0.
- */
 export function createEmptyProject(): TwProject {
   return {
     version: SCHEMA_VERSION,

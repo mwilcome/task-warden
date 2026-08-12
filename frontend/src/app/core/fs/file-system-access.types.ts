@@ -1,8 +1,3 @@
-/**
- * Minimal File System Access API typings used by infrastructure.
- * Chrome / Edge required (File System Access API).
- */
-
 export interface TwFilePickerAcceptType {
   description?: string;
   accept: Record<string, string[]>;
@@ -20,7 +15,7 @@ export interface TwSaveFilePickerOptions {
   excludeAcceptAllOption?: boolean;
 }
 
-/** Window methods not always present on TS lib versions we use. */
+/** Not always on the TS lib Window type we compile against. */
 export interface TwFileSystemWindow {
   showOpenFilePicker?: (
     options?: TwOpenFilePickerOptions,

@@ -2,7 +2,7 @@ import { Injectable, signal } from '@angular/core';
 import type { TwProject } from '../project/project.types';
 
 const DB_NAME = 'task-warden';
-/** v2: recents may be file-backed or browser-only (no handle). */
+/** Schema v2 allows recents with no file handle. */
 const DB_VERSION = 2;
 const STORE = 'recents';
 const MAX_RECENTS = 8;
@@ -12,22 +12,15 @@ export type RecentProjectSource = 'file' | 'browser';
 export interface RecentProjectMeta {
   id: string;
   name: string;
-  /** Disk file name when source is file; otherwise null. */
   fileName: string | null;
-  /** How this project was last opened in this browser. */
   source: RecentProjectSource;
   openedAt: string;
 }
 
 interface RecentProjectRecord extends RecentProjectMeta {
-  /** Present when a disk file was opened at least once for this id. */
   handle?: FileSystemFileHandle;
 }
 
-/**
- * Local recents: disk projects (with FileSystemFileHandle) and browser-only projects.
- * Same browser only; no cloud.
- */
 @Injectable({ providedIn: 'root' })
 export class RecentProjectsService {
   private readonly listSignal = signal<RecentProjectMeta[]>([]);
@@ -50,7 +43,6 @@ export class RecentProjectsService {
     }
   }
 
-  /** Record a disk-backed project (New/Open file). */
   async recordFile(
     handle: FileSystemFileHandle,
     project: TwProject,
@@ -67,7 +59,6 @@ export class RecentProjectsService {
         openedAt: new Date().toISOString(),
         handle,
       };
-      // Preserve nothing else; file open is authoritative for this id.
       if (existing && !record.handle) {
         record.handle = existing.handle;
       }
@@ -79,7 +70,6 @@ export class RecentProjectsService {
     }
   }
 
-  /** Record or bump a browser-only project (no disk file required). */
   async recordBrowser(project: TwProject): Promise<void> {
     try {
       const db = await this.openDb();
@@ -90,8 +80,7 @@ export class RecentProjectsService {
         fileName: null,
         source: 'browser',
         openedAt: new Date().toISOString(),
-        // Keep a prior handle so the user can still open the disk file later via Open Project
-        // or if we add dual actions; open path uses source to pick cache vs handle.
+        // Keep a prior handle so a later file open for this id still works.
         handle: existing?.handle,
       };
       await this.put(db, record);

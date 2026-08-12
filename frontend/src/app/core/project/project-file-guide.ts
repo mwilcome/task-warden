@@ -1,12 +1,7 @@
 import { AI_INSTRUCTIONS, SCHEMA_VERSION } from './project.types';
 
-/** Suggested download name (shown in the browser save dialog). */
 export const PROJECT_FILE_GUIDE_FILENAME = 'task-warden-project-file-guide.md';
 
-/**
- * Build the downloadable guide for the `.tw.json` project format.
- * Intended for a local AI (or person) that edits project files on disk.
- */
 export function buildProjectFileGuide(): string {
   return `# Task Warden project file guide
 
@@ -122,10 +117,7 @@ Follow that field on the specific file you are editing if it differs.
 `;
 }
 
-/**
- * Trigger a browser download of the project file guide.
- * Works without File System Access (any browser that supports Blob downloads).
- */
+/** Blob download; works without File System Access. */
 export function downloadProjectFileGuide(): void {
   const content = buildProjectFileGuide();
   const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });

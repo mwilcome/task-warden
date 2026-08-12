@@ -13,10 +13,7 @@ export interface CachedProjectRecord {
   cachedAt: string;
 }
 
-/**
- * Local full-project JSON cache (IndexedDB) + last-project id (localStorage).
- * Browser convenience only; disk `.tw.json` remains the AI source of truth when present.
- */
+/** IndexedDB project cache + last-project id in localStorage. Best-effort only. */
 @Injectable({ providedIn: 'root' })
 export class ProjectCacheService {
   private dbPromise: Promise<IDBDatabase> | null = null;
@@ -79,7 +76,7 @@ export class ProjectCacheService {
         this.setLastProjectId(null);
       }
     } catch {
-      /* ignore */
+      /* best-effort */
     }
   }
 
@@ -120,7 +117,7 @@ export class ProjectCacheService {
   }
 }
 
-/** Stable compare for conflict detection (same project content; key-order safe). */
+/** Content equality that ignores JSON key order. */
 export function projectsContentEqual(a: TwProject, b: TwProject): boolean {
   return stableStringify(a) === stableStringify(b);
 }

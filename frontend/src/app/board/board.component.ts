@@ -18,11 +18,9 @@ import {
 } from '../task-panel/task-panel.component';
 
 const DND_STATUS_MIME = 'application/x-task-warden-status';
-/** Pixels of movement before a press becomes a task drag (keeps click-to-edit). */
+/** Movement past this (px) is a drag; below it, the press opens the task. */
 const TASK_DRAG_THRESHOLD_PX = 8;
-/** Edge band (px) that triggers board/column auto-scroll while dragging a task. */
 const DRAG_SCROLL_EDGE_PX = 56;
-/** Max px per animation frame for auto-scroll (scales up near the edge). */
 const DRAG_SCROLL_MAX_STEP_PX = 22;
 
 type TaskPointerSession = {
@@ -32,9 +30,7 @@ type TaskPointerSession = {
   pointerId: number;
   startX: number;
   startY: number;
-  /** True after movement exceeds threshold */
   active: boolean;
-  /** Element that received pointerdown (for release capture) */
   target: HTMLElement;
 };
 
@@ -45,12 +41,6 @@ type TaskGhost = {
   width: number;
 };
 
-/**
- * Kanban board: columns, cards, panels, pointer task drag, status management.
- * Task move uses pointer events (desktop + mobile). Column reorder still supports
- * HTML5 drag on the title row plus ← → buttons.
- * Styles: global classes only (src/styles.scss).
- */
 @Component({
   selector: 'app-board',
   imports: [TaskPanelComponent, FormsModule],
@@ -69,7 +59,7 @@ export class BoardComponent {
   protected readonly renamingStatus = signal<string | null>(null);
   protected readonly renameDraft = signal('');
   protected readonly statusError = signal<string | null>(null);
-  /** Enter and blur both call commitRename; ignore the second while the first await is open. */
+  /** Enter and blur both commit; drop the second call while the first await is open. */
   private renameCommitInFlight = false;
   protected readonly addingStatus = signal(false);
   protected readonly newStatusName = signal('');
@@ -79,7 +69,6 @@ export class BoardComponent {
   private readonly newStatusInput = viewChild<ElementRef<HTMLInputElement>>('newStatusInput');
 
   private taskPointer: TaskPointerSession | null = null;
-  /** Last pointer position while dragging (for continuous edge auto-scroll). */
   private dragPointerPos: { x: number; y: number } | null = null;
   private dragScrollRaf: number | null = null;
   private readonly onWinPointerMove = (e: PointerEvent) => this.handleTaskPointerMove(e);
@@ -127,8 +116,6 @@ export class BoardComponent {
     this.panel.set(null);
   }
 
-  // --- Task pointer drag (desktop + mobile) --------------------------------
-
   protected onTaskPointerDown(event: PointerEvent, task: TwTask): void {
     if (event.button !== 0 && event.pointerType === 'mouse') {
       return;
@@ -167,14 +154,13 @@ export class BoardComponent {
       if (Math.hypot(dx, dy) < TASK_DRAG_THRESHOLD_PX) {
         return;
       }
-      /* Any direction past threshold: real task drag (not scroll). */
       session.active = true;
       this.draggingTaskId.set(session.taskId);
       this.draggingStatus.set(null);
       try {
         session.target.setPointerCapture(event.pointerId);
       } catch {
-        /* some browsers may reject capture; window listeners still work */
+        /* setPointerCapture can throw; window listeners still receive moves */
       }
       document.body.classList.add('is-task-dragging');
       const rect = session.target.getBoundingClientRect();
@@ -211,7 +197,7 @@ export class BoardComponent {
     try {
       session.target.releasePointerCapture(event.pointerId);
     } catch {
-      /* ignore */
+      /* already released */
     }
     this.taskPointer = null;
     this.draggingTaskId.set(null);
@@ -248,10 +234,6 @@ export class BoardComponent {
     }
   }
 
-  /**
-   * While dragging near the left/right of the board scrollport, pan the board.
-   * Near top/bottom of a column's card list, scroll that list.
-   */
   private applyDragAutoScroll(clientX: number, clientY: number): void {
     const board = document.querySelector('.app-main--board') as HTMLElement | null;
     if (board) {
@@ -290,7 +272,7 @@ export class BoardComponent {
     }
   }
 
-  /** Keep scrolling if the pointer stays in the edge band without moving. */
+  /** Continues edge-scroll when the pointer is held still in the band. */
   private startDragScrollLoop(): void {
     if (this.dragScrollRaf !== null) {
       return;
@@ -349,8 +331,6 @@ export class BoardComponent {
     window.removeEventListener('pointercancel', this.onWinPointerCancel);
   }
 
-  // --- Column drop target (status reorder via HTML5 only) ------------------
-
   protected onColumnDragOver(event: DragEvent, status: string): void {
     if (!this.draggingStatus()) {
       return;
@@ -387,8 +367,6 @@ export class BoardComponent {
     }
     await this.dropStatusOn(statusFrom, status);
   }
-
-  // --- Status management (Story K) -----------------------------------------
 
   protected onStatusDragStart(event: DragEvent, status: string): void {
     if (!event.dataTransfer) {

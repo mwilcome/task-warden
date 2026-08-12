@@ -23,16 +23,12 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
 
-/**
- * Validates an unknown value as a TwProject.
- * Fail closed — no sanitizing.
- */
+/** Fail closed: no sanitizing or repair. */
 export function validateProject(value: unknown): ProjectValidationResult {
   if (!isPlainObject(value)) {
     return fail('Root value must be a JSON object.');
   }
 
-  // Required top-level fields present
   const requiredKeys = [
     'version',
     'id',
@@ -51,7 +47,6 @@ export function validateProject(value: unknown): ProjectValidationResult {
     }
   }
 
-  // version must be exactly 1.0.0
   if (value['version'] !== SCHEMA_VERSION) {
     return fail(`Unsupported version (expected "${SCHEMA_VERSION}").`);
   }
@@ -219,10 +214,6 @@ function validateTask(
   };
 }
 
-/**
- * Parse a JSON string and validate as a TwProject.
- * Invalid JSON → Invalid Task Warden file (fail closed).
- */
 export function parseAndValidateProject(jsonText: string): ProjectValidationResult {
   let parsed: unknown;
   try {

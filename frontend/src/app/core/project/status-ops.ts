@@ -5,10 +5,7 @@ function normalizeStatusName(name: string): string {
   return name.trim();
 }
 
-/**
- * After statuses change, sync each task's `closed` to last-status rule.
- * Only bumps `updated` when `closed` actually changes.
- */
+/** Aligns each task's `closed` with last-status. Only touches `updated` when `closed` changes. */
 export function syncClosedFields(
   project: TwProject,
   now: string = utcNowIso(),
@@ -30,7 +27,6 @@ export function syncClosedFields(
   return { ...project, tasks };
 }
 
-/** Append a new empty status column. */
 export function addStatus(
   project: TwProject,
   name: string,
@@ -49,7 +45,7 @@ export function addStatus(
   return { ok: true, value: syncClosedFields(next) };
 }
 
-/** Rename a status and rewrite every task that used the old name. */
+/** Renames the column and every task still using the old name. */
 export function renameStatus(
   project: TwProject,
   oldName: string,
@@ -77,7 +73,6 @@ export function renameStatus(
   return { ok: true, value: syncClosedFields({ ...project, statuses, tasks }) };
 }
 
-/** Move status at fromIndex to toIndex (array order = column order). */
 export function reorderStatuses(
   project: TwProject,
   fromIndex: number,
@@ -101,10 +96,6 @@ export function reorderStatuses(
   return { ok: true, value: syncClosedFields({ ...project, statuses: next }) };
 }
 
-/**
- * Delete a status only when it has zero tasks.
- * Must keep at least one status.
- */
 export function deleteStatus(
   project: TwProject,
   name: string,

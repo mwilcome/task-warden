@@ -16,11 +16,6 @@ export type TaskPanelMode =
   | { kind: 'create'; status: string }
   | { kind: 'edit'; task: TwTask };
 
-/**
- * Side panel for create (F) / edit (G) / delete (H).
- * Story M: Escape cancels, Enter submits form, title autofocus.
- * Styles: global classes only (src/styles.scss).
- */
 @Component({
   selector: 'app-task-panel',
   imports: [FormsModule],

@@ -1,16 +1,6 @@
-/* =============================================================================
-   Task Warden — global styles only
-   -----------------------------------------------------------------------------
-   Clean light theme (business): off-white page, white surfaces, cool grey
-   borders, one restrained slate-blue accent. Quiet professionalism.
-   Swimlanes: uniform muted greys (no per-status color coding).
-   Rules (docs/architecture.md): all styles here; no component SCSS.
-   ============================================================================= */
-
 /* --- Design tokens -------------------------------------------------------- */
 
 :root {
-  /* Clean light palette — primary is medium-dark slate blue (not teal) */
   --color-bg: #f4f5f7;
   --color-surface: #ffffff;
   --color-surface-elevated: #ffffff;
@@ -141,7 +131,6 @@ a {
   gap: var(--space-2);
 }
 
-/* Badge: exact pre-dark geometry & sizes (clip-path shield from main) */
 app-brand-mark {
   display: inline-flex;
   flex-shrink: 0;
@@ -156,7 +145,6 @@ app-brand-mark {
   flex-shrink: 0;
   background: var(--color-primary);
   color: #fff;
-  /* Keystone / shield silhouette — same polygon as main */
   clip-path: polygon(50% 0%, 100% 12%, 100% 68%, 50% 100%, 0% 68%, 0% 12%);
 }
 
@@ -400,7 +388,6 @@ app-brand-mark {
   border: 1px solid color-mix(in srgb, var(--color-warning) 25%, transparent);
 }
 
-/* Persistent non-blocking save failure (Story C) */
 .save-banner {
   position: sticky;
   top: 0;
@@ -422,7 +409,6 @@ app-brand-mark {
   flex-shrink: 0;
 }
 
-/* Missing / stale recent project recovery */
 .recent-failure {
   position: sticky;
   top: 0;
@@ -469,7 +455,6 @@ app-brand-mark {
   flex-shrink: 0;
 }
 
-/* Disk vs browser cache conflict */
 .cache-conflict {
   position: sticky;
   top: 0;
@@ -709,7 +694,7 @@ app-brand-mark {
   font-weight: var(--font-weight-medium);
 }
 
-/* --- Board stage + open prompt overlay (Draw.io-style page behind) -------- */
+/* --- Board stage + open prompt -------------------------------------------- */
 
 .board-stage {
   position: relative;
@@ -895,7 +880,7 @@ app-brand-mark {
   align-items: flex-start;
 }
 
-/* --- Forms (ready for later stories) -------------------------------------- */
+/* --- Forms ---------------------------------------------------------------- */
 
 label {
   display: block;
@@ -1023,16 +1008,14 @@ textarea {
 .app-main--board {
   padding-top: var(--space-3);
   padding-bottom: var(--space-6);
-  /* Scrollport for wide boards (many swimlanes). */
   overflow-x: auto;
   overflow-y: visible;
   width: 100%;
-  /* Avoid clipping the start of centered overflow content. */
   overscroll-behavior-x: contain;
 }
 
 .board-wrap {
-  /* Grow with columns so parent can scroll; min 100% so few columns can still center. */
+  /* max-content grows with columns; min-width 100% still centers a short board. */
   width: max-content;
   min-width: 100%;
   box-sizing: border-box;
@@ -1045,7 +1028,6 @@ textarea {
   align-items: stretch;
   justify-content: center;
   gap: var(--space-4);
-  /* Columns share a viewport-relative cap; card lists scroll inside. */
   min-height: 12rem;
   padding-bottom: var(--space-2);
   width: max-content;
@@ -1056,22 +1038,20 @@ textarea {
 .board-column {
   display: flex;
   flex-direction: column;
-  /* Do not shrink columns to fit the viewport; horizontal scroll instead. */
+  /* Do not shrink to the viewport; the board scrolls horizontally instead. */
   flex: 0 0 16rem;
   width: 16rem;
   min-width: 15rem;
   max-width: 22rem;
-  /* Fixed % of viewport: same idea on phone and large monitors */
   max-height: 70vh;
   min-height: 0;
-  /* Uniform muted grey surface — no per-status color */
   background: #f7f8fa;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: var(--space-3);
   gap: var(--space-3);
   box-shadow: var(--shadow-sm);
-  /* Column chrome / empty body: horizontal board pan (tasks opt out). */
+  /* Chrome/empty body pans the board; task cards set touch-action: none. */
   touch-action: pan-x;
 }
 
@@ -1205,28 +1185,22 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  /*
-   * Size to task content only (do not fill the column). Remaining height is
-   * .board-column__pan so empty middle is horizontally pannable.
-   */
+  /* Height follows cards; leftover space is .board-column__pan (board pan). */
   flex: 0 1 auto;
   min-height: 0;
-  /* Cap so long lists scroll inside; leaves room for header + Add task */
   max-height: calc(70vh - 10rem);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  /* List vertical scroll when overflowing; horizontal can pan the board */
   touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
 
-/* Empty space between task list and Add task — primary pan surface */
+/* Empty band between cards and Add task — primary board-pan surface. */
 .board-column__pan {
   flex: 1 1 auto;
   min-height: 0.5rem;
   touch-action: pan-x;
-  /* Keep drops targeting the column (pointer events on this region). */
   pointer-events: auto;
 }
 
@@ -1234,7 +1208,6 @@ textarea {
   font-size: var(--font-size-sm);
   padding: var(--space-2) var(--space-1);
   opacity: 0.85;
-  /* Label only — not a full-height hit trap */
   flex-shrink: 0;
   touch-action: pan-x;
 }
@@ -1263,7 +1236,7 @@ textarea {
   text-align: left;
   width: 100%;
   user-select: none;
-  /* Only the task claims the gesture for drag; empty column area can pan. */
+  /* Card owns the pointer; empty column area can still pan. */
   touch-action: none;
 
   &:hover {
@@ -1285,7 +1258,6 @@ textarea {
   opacity: 0.4;
 }
 
-/* Floating ghost while pointer-dragging a task (desktop + mobile) */
 .task-card-ghost {
   position: fixed;
   z-index: 80;
@@ -1305,7 +1277,6 @@ textarea {
 body.is-task-dragging {
   cursor: grabbing;
   user-select: none;
-  /* While a task is mid-drag, keep the page from fighting the drag. */
   touch-action: none;
 }
 
@@ -1366,7 +1337,7 @@ body.is-task-dragging {
   }
 }
 
-/* --- Task panel (Stories F / G / H) -------------------------------------- */
+/* --- Task panel ----------------------------------------------------------- */
 
 .task-panel-root {
   position: fixed;

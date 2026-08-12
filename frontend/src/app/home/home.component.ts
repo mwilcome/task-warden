@@ -14,10 +14,6 @@ import { INVALID_FILE_MESSAGE } from '../core/project/project.types';
 import { ProjectSessionService } from '../core/project/project-session.service';
 import { BrandMarkComponent } from './brand-mark.component';
 
-/**
- * Board shell: always on-page board, open-file overlay, header Projects menu.
- * Styles: global classes only (src/styles.scss).
- */
 @Component({
   selector: 'app-home',
   imports: [BoardComponent, FormsModule, BrandMarkComponent],

@@ -28,10 +28,7 @@ export interface OpenedProjectFile {
   fileName: string;
 }
 
-/**
- * Infrastructure: File System Access API adapter for `.tw.json` files.
- * No domain validation here — application layer parses/validates.
- */
+/** File System Access adapter. Does not parse or validate project JSON. */
 @Injectable({ providedIn: 'root' })
 export class ProjectFileRepository {
   isSupported(): boolean {
@@ -59,9 +56,6 @@ export class ProjectFileRepository {
     }
   }
 
-  /**
-   * Prompt for a new file location, write the full project JSON, return the handle.
-   */
   async pickLocationAndWrite(project: TwProject, suggestedName = 'untitled.tw.json'): Promise<{
     handle: FileSystemFileHandle;
     fileName: string;
@@ -84,14 +78,12 @@ export class ProjectFileRepository {
     }
   }
 
-  /** Re-read text from an existing file handle (fresh from disk). */
   async readHandle(handle: FileSystemFileHandle): Promise<{ text: string; fileName: string }> {
     const file = await handle.getFile();
     const text = await file.text();
     return { text, fileName: file.name || handle.name };
   }
 
-  /** Write the entire project object to an existing file handle. */
   async write(handle: FileSystemFileHandle, project: TwProject): Promise<void> {
     const writable = await handle.createWritable();
     try {

@@ -1,9 +1,5 @@
 import { Component, input } from '@angular/core';
 
-/**
- * TW badge — restored to pre-dark geometry (clip-path shield + original sizes).
- * Paint uses current slate-blue tokens; shape matches main.
- */
 @Component({
   selector: 'app-brand-mark',
   host: {
@@ -20,6 +16,5 @@ import { Component, input } from '@angular/core';
   `,
 })
 export class BrandMarkComponent {
-  /** sm = dialog; header = app bar; default = md hero size */
   readonly size = input<'sm' | 'header' | 'md'>('md');
 }
