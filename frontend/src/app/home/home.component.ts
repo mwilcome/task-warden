@@ -10,8 +10,8 @@ import {
 import { FormsModule } from '@angular/forms';
 import { BoardComponent } from '../board/board.component';
 import { downloadProjectFileGuide } from '../core/project/project-file-guide';
-import { INVALID_FILE_MESSAGE } from '../core/project/project.types';
 import { ProjectSessionService } from '../core/project/project-session.service';
+import { OneAtATime, focusInput, onEnterOrEscape } from '../core/ui';
 import { BrandMarkComponent } from './brand-mark.component';
 
 @Component({
@@ -30,6 +30,7 @@ export class HomeComponent {
 
   private readonly nameInput = viewChild<ElementRef<HTMLInputElement>>('nameInput');
   private readonly projectsMenuRoot = viewChild<ElementRef<HTMLElement>>('projectsMenu');
+  private readonly nameLock = new OneAtATime();
 
   constructor() {
     effect(() => {
@@ -40,19 +41,10 @@ export class HomeComponent {
     });
 
     effect(() => {
-      if (!this.editingName()) {
-        return;
+      if (this.editingName()) {
+        queueMicrotask(() => focusInput(this.nameInput()));
       }
-      queueMicrotask(() => {
-        this.nameInput()?.nativeElement.focus();
-        this.nameInput()?.nativeElement.select();
-      });
     });
-  }
-
-  protected get isInvalidFileError(): boolean {
-    const err = this.session.uiError();
-    return !!err && err.startsWith(INVALID_FILE_MESSAGE);
   }
 
   @HostListener('document:click', ['$event'])
@@ -91,13 +83,11 @@ export class HomeComponent {
   }
 
   onNameKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      void this.commitName();
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      this.cancelNameEdit();
-    }
+    onEnterOrEscape(
+      event,
+      () => void this.commitName(),
+      () => this.cancelNameEdit(),
+    );
   }
 
   onNameBlur(): void {
@@ -116,17 +106,19 @@ export class HomeComponent {
     if (!this.editingName()) {
       return;
     }
-    const draft = this.nameDraft().trim();
-    if (!draft) {
-      this.nameError.set('Project name is required.');
-      return;
-    }
-    const result = await this.session.setProjectName(draft);
-    if (!result.ok) {
-      this.nameError.set(result.message);
-      return;
-    }
-    this.nameError.set(null);
-    this.editingName.set(false);
+    await this.nameLock.run(async () => {
+      const draft = this.nameDraft().trim();
+      if (!draft) {
+        this.nameError.set('Project name is required.');
+        return;
+      }
+      const result = await this.session.setProjectName(draft);
+      if (!result.ok) {
+        this.nameError.set(result.message);
+        return;
+      }
+      this.nameError.set(null);
+      this.editingName.set(false);
+    });
   }
 }

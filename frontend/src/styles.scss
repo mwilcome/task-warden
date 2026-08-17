@@ -1258,7 +1258,7 @@ textarea {
   opacity: 0.4;
 }
 
-.task-card-ghost {
+.task-drag-preview {
   position: fixed;
   z-index: 80;
   pointer-events: none;
@@ -1274,7 +1274,7 @@ textarea {
   touch-action: none;
 }
 
-body.is-task-dragging {
+body.is-dragging-task {
   cursor: grabbing;
   user-select: none;
   touch-action: none;

@@ -7,7 +7,7 @@
     <section
       class="board-column"
       [attr.data-board-status]="column.status"
-      [class.board-column--drag-over]="dragOverStatus() === column.status"
+      [class.board-column--drag-over]="dropColumn() === column.status"
       [attr.aria-label]="column.status"
       (dragover)="onColumnDragOver($event, column.status)"
       (dragleave)="onColumnDragLeave($event, column.status)"
@@ -89,7 +89,7 @@
         @if (column.tasks.length === 0) {
           <p class="board-column__empty muted flush">No tasks</p>
         }
-        @for (task of column.tasks; track trackTask($index, task)) {
+        @for (task of column.tasks; track task.id) {
           <article
             class="task-card"
             [class.task-card--dragging]="draggingTaskId() === task.id"
@@ -147,15 +147,15 @@
   </div>
 </div>
 
-@if (taskGhost(); as ghost) {
+@if (dragPreview(); as preview) {
   <div
-    class="task-card-ghost"
-    [style.left.px]="ghost.x"
-    [style.top.px]="ghost.y"
-    [style.width.px]="ghost.width"
+    class="task-drag-preview"
+    [style.left.px]="preview.x"
+    [style.top.px]="preview.y"
+    [style.width.px]="preview.width"
     aria-hidden="true"
   >
-    <span class="task-card__title">{{ ghost.title }}</span>
+    <span class="task-card__title">{{ preview.title }}</span>
   </div>
 }
 

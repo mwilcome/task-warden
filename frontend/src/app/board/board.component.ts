@@ -10,20 +10,24 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { buildBoardColumns } from '../core/project/board-model';
-import { ProjectSessionService } from '../core/project/project-session.service';
+import {
+  ProjectSessionService,
+  type SessionActionResult,
+} from '../core/project/project-session.service';
 import type { TwTask } from '../core/project/project.types';
+import { OneAtATime, focusInput, onEnterOrEscape } from '../core/ui';
 import {
   TaskPanelComponent,
   type TaskPanelMode,
 } from '../task-panel/task-panel.component';
 
-const DND_STATUS_MIME = 'application/x-task-warden-status';
+const COLUMN_DRAG_TYPE = 'application/x-task-warden-status';
 /** Movement past this (px) is a drag; below it, the press opens the task. */
 const TASK_DRAG_THRESHOLD_PX = 8;
 const DRAG_SCROLL_EDGE_PX = 56;
 const DRAG_SCROLL_MAX_STEP_PX = 22;
 
-type TaskPointerSession = {
+type TaskDrag = {
   taskId: string;
   title: string;
   fromStatus: string;
@@ -34,7 +38,7 @@ type TaskPointerSession = {
   target: HTMLElement;
 };
 
-type TaskGhost = {
+type DragPreview = {
   title: string;
   x: number;
   y: number;
@@ -51,25 +55,24 @@ export class BoardComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly panel = signal<TaskPanelMode | null>(null);
-  protected readonly dragOverStatus = signal<string | null>(null);
+  protected readonly dropColumn = signal<string | null>(null);
   protected readonly draggingTaskId = signal<string | null>(null);
-  protected readonly draggingStatus = signal<string | null>(null);
-  protected readonly taskGhost = signal<TaskGhost | null>(null);
+  protected readonly draggingColumn = signal<string | null>(null);
+  protected readonly dragPreview = signal<DragPreview | null>(null);
 
   protected readonly renamingStatus = signal<string | null>(null);
   protected readonly renameDraft = signal('');
   protected readonly statusError = signal<string | null>(null);
-  /** Enter and blur both commit; drop the second call while the first await is open. */
-  private renameCommitInFlight = false;
+  private readonly renameLock = new OneAtATime();
   protected readonly addingStatus = signal(false);
   protected readonly newStatusName = signal('');
-  private addStatusCommitInFlight = false;
+  private readonly addStatusLock = new OneAtATime();
 
   private readonly statusRenameInput =
     viewChild<ElementRef<HTMLInputElement>>('statusRenameInput');
   private readonly newStatusInput = viewChild<ElementRef<HTMLInputElement>>('newStatusInput');
 
-  private taskPointer: TaskPointerSession | null = null;
+  private taskDrag: TaskDrag | null = null;
   private dragPointerPos: { x: number; y: number } | null = null;
   private dragScrollRaf: number | null = null;
   private readonly onWinPointerMove = (e: PointerEvent) => this.handleTaskPointerMove(e);
@@ -84,20 +87,17 @@ export class BoardComponent {
   constructor() {
     effect(() => {
       if (this.renamingStatus()) {
-        queueMicrotask(() => {
-          this.statusRenameInput()?.nativeElement.focus();
-          this.statusRenameInput()?.nativeElement.select();
-        });
+        queueMicrotask(() => focusInput(this.statusRenameInput()));
       }
     });
     effect(() => {
       if (this.addingStatus()) {
-        queueMicrotask(() => this.newStatusInput()?.nativeElement.focus());
+        queueMicrotask(() => focusInput(this.newStatusInput(), false));
       }
     });
 
     this.destroyRef.onDestroy(() => {
-      this.teardownTaskPointerListeners();
+      this.removeTaskDragListeners();
       this.stopDragScrollLoop();
     });
   }
@@ -121,12 +121,12 @@ export class BoardComponent {
     if (event.button !== 0 && event.pointerType === 'mouse') {
       return;
     }
-    if (this.taskPointer) {
+    if (this.taskDrag) {
       return;
     }
 
     const target = event.currentTarget as HTMLElement;
-    this.taskPointer = {
+    this.taskDrag = {
       taskId: task.id,
       title: task.title,
       fromStatus: task.status,
@@ -143,30 +143,30 @@ export class BoardComponent {
   }
 
   private handleTaskPointerMove(event: PointerEvent): void {
-    const session = this.taskPointer;
-    if (!session || event.pointerId !== session.pointerId) {
+    const drag = this.taskDrag;
+    if (!drag || event.pointerId !== drag.pointerId) {
       return;
     }
 
-    const dx = event.clientX - session.startX;
-    const dy = event.clientY - session.startY;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
 
-    if (!session.active) {
+    if (!drag.active) {
       if (Math.hypot(dx, dy) < TASK_DRAG_THRESHOLD_PX) {
         return;
       }
-      session.active = true;
-      this.draggingTaskId.set(session.taskId);
-      this.draggingStatus.set(null);
+      drag.active = true;
+      this.draggingTaskId.set(drag.taskId);
+      this.draggingColumn.set(null);
       try {
-        session.target.setPointerCapture(event.pointerId);
+        drag.target.setPointerCapture(event.pointerId);
       } catch {
         /* setPointerCapture can throw; window listeners still receive moves */
       }
-      document.body.classList.add('is-task-dragging');
-      const rect = session.target.getBoundingClientRect();
-      this.taskGhost.set({
-        title: session.title,
+      document.body.classList.add('is-dragging-task');
+      const rect = drag.target.getBoundingClientRect();
+      this.dragPreview.set({
+        title: drag.title,
         x: event.clientX - rect.width / 2,
         y: event.clientY - rect.height / 2,
         width: rect.width,
@@ -182,56 +182,55 @@ export class BoardComponent {
   }
 
   private async handleTaskPointerUp(event: PointerEvent): Promise<void> {
-    const session = this.taskPointer;
-    if (!session || event.pointerId !== session.pointerId) {
+    const drag = this.taskDrag;
+    if (!drag || event.pointerId !== drag.pointerId) {
       return;
     }
 
-    const wasActive = session.active;
-    const taskId = session.taskId;
-    const dropStatus = wasActive
-      ? this.statusUnderPoint(event.clientX, event.clientY)
+    const wasActive = drag.active;
+    const taskId = drag.taskId;
+    const dropColumn = wasActive
+      ? this.columnUnderPoint(event.clientX, event.clientY)
       : null;
 
     this.stopDragScrollLoop();
-    this.teardownTaskPointerListeners();
+    this.removeTaskDragListeners();
     try {
-      session.target.releasePointerCapture(event.pointerId);
+      drag.target.releasePointerCapture(event.pointerId);
     } catch {
       /* already released */
     }
-    this.taskPointer = null;
+    this.taskDrag = null;
     this.draggingTaskId.set(null);
-    this.dragOverStatus.set(null);
-    this.taskGhost.set(null);
-    document.body.classList.remove('is-task-dragging');
+    this.dropColumn.set(null);
+    this.dragPreview.set(null);
+    document.body.classList.remove('is-dragging-task');
 
     if (!wasActive) {
-      const project = this.session.project();
-      const task = project?.tasks.find((t) => t.id === taskId);
+      const task = this.session.project()?.tasks.find((t) => t.id === taskId);
       if (task) {
         this.panel.set({ kind: 'edit', task: { ...task } });
       }
       return;
     }
 
-    if (dropStatus && dropStatus !== session.fromStatus) {
-      await this.session.moveTask(taskId, dropStatus);
+    if (dropColumn && dropColumn !== drag.fromStatus) {
+      await this.session.moveTask(taskId, dropColumn);
     }
   }
 
   private updateDragVisuals(clientX: number, clientY: number): void {
-    const ghost = this.taskGhost();
-    if (ghost) {
-      this.taskGhost.set({
-        ...ghost,
-        x: clientX - ghost.width / 2,
+    const preview = this.dragPreview();
+    if (preview) {
+      this.dragPreview.set({
+        ...preview,
+        x: clientX - preview.width / 2,
         y: clientY - 20,
       });
     }
-    const status = this.statusUnderPoint(clientX, clientY);
-    if (status !== this.dragOverStatus()) {
-      this.dragOverStatus.set(status);
+    const column = this.columnUnderPoint(clientX, clientY);
+    if (column !== this.dropColumn()) {
+      this.dropColumn.set(column);
     }
   }
 
@@ -274,7 +273,7 @@ export class BoardComponent {
     }
     const tick = (): void => {
       this.dragScrollRaf = null;
-      if (!this.taskPointer?.active || !this.dragPointerPos) {
+      if (!this.taskDrag?.active || !this.dragPointerPos) {
         return;
       }
       this.applyDragAutoScroll(this.dragPointerPos.x, this.dragPointerPos.y);
@@ -310,29 +309,29 @@ export class BoardComponent {
     return el instanceof HTMLElement ? el : null;
   }
 
-  private statusUnderPoint(x: number, y: number): string | null {
+  private columnUnderPoint(x: number, y: number): string | null {
     return (
       this.closestFromPoint(x, y, '[data-board-status]')?.getAttribute('data-board-status') ??
       null
     );
   }
 
-  private teardownTaskPointerListeners(): void {
+  private removeTaskDragListeners(): void {
     window.removeEventListener('pointermove', this.onWinPointerMove);
     window.removeEventListener('pointerup', this.onWinPointerUp);
     window.removeEventListener('pointercancel', this.onWinPointerCancel);
   }
 
   protected onColumnDragOver(event: DragEvent, status: string): void {
-    if (!this.draggingStatus()) {
+    if (!this.draggingColumn()) {
       return;
     }
     event.preventDefault();
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = 'move';
     }
-    if (this.dragOverStatus() !== status) {
-      this.dragOverStatus.set(status);
+    if (this.dropColumn() !== status) {
+      this.dropColumn.set(status);
     }
   }
 
@@ -342,22 +341,21 @@ export class BoardComponent {
     if (related && current.contains(related)) {
       return;
     }
-    if (this.dragOverStatus() === status) {
-      this.dragOverStatus.set(null);
+    if (this.dropColumn() === status) {
+      this.dropColumn.set(null);
     }
   }
 
   protected async onColumnDrop(event: DragEvent, status: string): Promise<void> {
     event.preventDefault();
-    this.dragOverStatus.set(null);
+    this.dropColumn.set(null);
 
-    const statusFrom =
-      event.dataTransfer?.getData(DND_STATUS_MIME) || this.draggingStatus();
-    this.draggingStatus.set(null);
-    if (!statusFrom) {
+    const from = event.dataTransfer?.getData(COLUMN_DRAG_TYPE) || this.draggingColumn();
+    this.draggingColumn.set(null);
+    if (!from) {
       return;
     }
-    await this.dropStatusOn(statusFrom, status);
+    await this.reorderColumns(from, status);
   }
 
   protected onStatusDragStart(event: DragEvent, status: string): void {
@@ -366,33 +364,21 @@ export class BoardComponent {
       return;
     }
     event.stopPropagation();
-    event.dataTransfer.setData(DND_STATUS_MIME, status);
+    event.dataTransfer.setData(COLUMN_DRAG_TYPE, status);
     event.dataTransfer.setData('text/plain', status);
     event.dataTransfer.effectAllowed = 'move';
-    this.draggingStatus.set(status);
+    this.draggingColumn.set(status);
     this.draggingTaskId.set(null);
   }
 
   protected onStatusDragEnd(): void {
-    this.draggingStatus.set(null);
-    this.dragOverStatus.set(null);
+    this.draggingColumn.set(null);
+    this.dropColumn.set(null);
   }
 
   protected async moveStatus(status: string, direction: -1 | 1): Promise<void> {
-    this.statusError.set(null);
-    const statuses = this.session.project()?.statuses ?? [];
-    const from = statuses.indexOf(status);
-    if (from < 0) {
-      return;
-    }
-    const to = from + direction;
-    if (to < 0 || to >= statuses.length) {
-      return;
-    }
-    const result = await this.session.reorderStatuses(from, to);
-    if (!result.ok) {
-      this.statusError.set(result.message);
-    }
+    const from = this.columnIndex(status);
+    await this.reorderByIndex(from, from + direction);
   }
 
   protected startRename(status: string): void {
@@ -407,39 +393,26 @@ export class BoardComponent {
   }
 
   protected onRenameKeydown(event: KeyboardEvent, oldName: string): void {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      void this.commitRename(oldName);
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      this.cancelRename();
-    }
+    onEnterOrEscape(
+      event,
+      () => void this.commitRename(oldName),
+      () => this.cancelRename(),
+    );
   }
 
   protected async commitRename(oldName: string): Promise<void> {
-    if (this.renamingStatus() !== oldName || this.renameCommitInFlight) {
+    if (this.renamingStatus() !== oldName) {
       return;
     }
-    this.renameCommitInFlight = true;
-    this.statusError.set(null);
-    try {
-      const result = await this.session.renameStatus(oldName, this.renameDraft());
-      if (!result.ok) {
-        this.statusError.set(result.message);
-        return;
+    await this.renameLock.run(async () => {
+      if (await this.runBoardAction(() => this.session.renameStatus(oldName, this.renameDraft()))) {
+        this.cancelRename();
       }
-      this.cancelRename();
-    } finally {
-      this.renameCommitInFlight = false;
-    }
+    });
   }
 
   protected async onDeleteStatus(status: string): Promise<void> {
-    this.statusError.set(null);
-    const result = await this.session.deleteStatus(status);
-    if (!result.ok) {
-      this.statusError.set(result.message);
-    }
+    await this.runBoardAction(() => this.session.deleteStatus(status));
   }
 
   protected startAddStatus(): void {
@@ -454,64 +427,66 @@ export class BoardComponent {
   }
 
   protected onAddStatusKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      void this.commitAddStatus();
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      this.cancelAddStatus();
-    }
+    onEnterOrEscape(
+      event,
+      () => void this.commitAddStatus(),
+      () => this.cancelAddStatus(),
+    );
   }
 
   protected async commitAddStatus(): Promise<void> {
-    if (!this.addingStatus() || this.addStatusCommitInFlight) {
+    if (!this.addingStatus()) {
       return;
     }
-    this.addStatusCommitInFlight = true;
-    this.statusError.set(null);
-    try {
-      const result = await this.session.addStatus(this.newStatusName());
-      if (!result.ok) {
-        this.statusError.set(result.message);
-        return;
+    await this.addStatusLock.run(async () => {
+      if (await this.runBoardAction(() => this.session.addStatus(this.newStatusName()))) {
+        this.cancelAddStatus();
       }
-      this.cancelAddStatus();
-    } finally {
-      this.addStatusCommitInFlight = false;
-    }
-  }
-
-  private async dropStatusOn(fromStatus: string, toStatus: string): Promise<void> {
-    this.statusError.set(null);
-    const statuses = this.session.project()?.statuses ?? [];
-    const from = statuses.indexOf(fromStatus);
-    const to = statuses.indexOf(toStatus);
-    if (from < 0 || to < 0 || from === to) {
-      return;
-    }
-    const result = await this.session.reorderStatuses(from, to);
-    if (!result.ok) {
-      this.statusError.set(result.message);
-    }
-  }
-
-  protected trackTask(_index: number, task: TwTask): string {
-    return task.id;
+    });
   }
 
   protected canMoveLeft(status: string): boolean {
-    const statuses = this.session.project()?.statuses ?? [];
-    return statuses.indexOf(status) > 0;
+    return this.columnIndex(status) > 0;
   }
 
   protected canMoveRight(status: string): boolean {
-    const statuses = this.session.project()?.statuses ?? [];
-    const i = statuses.indexOf(status);
-    return i >= 0 && i < statuses.length - 1;
+    const i = this.columnIndex(status);
+    return i >= 0 && i < this.columnNames().length - 1;
   }
 
   protected canDelete(column: { status: string; count: number }): boolean {
-    const statuses = this.session.project()?.statuses ?? [];
-    return column.count === 0 && statuses.length > 1;
+    return column.count === 0 && this.columnNames().length > 1;
+  }
+
+  private columnNames(): string[] {
+    return this.session.project()?.statuses ?? [];
+  }
+
+  private columnIndex(status: string): number {
+    return this.columnNames().indexOf(status);
+  }
+
+  private async reorderColumns(fromStatus: string, toStatus: string): Promise<void> {
+    await this.reorderByIndex(this.columnIndex(fromStatus), this.columnIndex(toStatus));
+  }
+
+  private async reorderByIndex(from: number, to: number): Promise<void> {
+    const names = this.columnNames();
+    if (from < 0 || to < 0 || from === to || to >= names.length) {
+      return;
+    }
+    await this.runBoardAction(() => this.session.reorderStatuses(from, to));
+  }
+
+  private async runBoardAction(
+    action: () => Promise<SessionActionResult>,
+  ): Promise<boolean> {
+    this.statusError.set(null);
+    const result = await action();
+    if (!result.ok) {
+      this.statusError.set(result.message);
+      return false;
+    }
+    return true;
   }
 }

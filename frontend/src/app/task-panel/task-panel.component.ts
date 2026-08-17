@@ -11,6 +11,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ProjectSessionService } from '../core/project/project-session.service';
 import type { TwTask } from '../core/project/project.types';
+import { focusInput } from '../core/ui';
 
 export type TaskPanelMode =
   | { kind: 'create'; status: string }
@@ -56,12 +57,7 @@ export class TaskPanelComponent {
         this.assigned.set(m.task.assigned ?? '');
         this.status.set(m.task.status);
       }
-      queueMicrotask(() => {
-        this.titleInput()?.nativeElement.focus();
-        if (m.kind === 'create') {
-          this.titleInput()?.nativeElement.select();
-        }
-      });
+      queueMicrotask(() => focusInput(this.titleInput(), m.kind === 'create'));
     });
   }
 
@@ -71,10 +67,6 @@ export class TaskPanelComponent {
 
   protected get statuses(): string[] {
     return this.session.project()?.statuses ?? [];
-  }
-
-  protected onBackdropClick(): void {
-    this.close();
   }
 
   protected onKeydown(event: KeyboardEvent): void {

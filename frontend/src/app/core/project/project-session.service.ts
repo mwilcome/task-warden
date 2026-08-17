@@ -231,9 +231,7 @@ export class ProjectSessionService {
       const opened = await this.files.pickAndRead();
       const validation = parseAndValidateProject(opened.text);
       if (!validation.ok) {
-        const message = validation.reason
-          ? `${validation.message}: ${validation.reason}`
-          : validation.message;
+        const message = this.invalidFileMessage(validation);
         this.uiErrorSignal.set(message);
         return { ok: false, message };
       }
@@ -281,33 +279,30 @@ export class ProjectSessionService {
         this.busySignal.set(false);
       }
       if (!meta && !handle) {
-        await this.setRecentFailure({
+        return this.setRecentFailure({
           projectId,
           name: 'Project',
           fileName: '',
           kind: 'missing',
           message: 'That project was not found in this browser.',
         });
-        return { ok: false, message: 'That project was not found in this browser.' };
       }
       if (meta?.source === 'browser') {
-        await this.setRecentFailure({
+        return this.setRecentFailure({
           projectId,
           name: meta.name,
           fileName: '',
           kind: 'missing',
           message: 'No browser copy of that project was found.',
         });
-        return { ok: false, message: 'No browser copy of that project was found.' };
       }
-      await this.setRecentFailure({
+      return this.setRecentFailure({
         projectId,
         name: meta?.name ?? 'Project',
         fileName: meta?.fileName ?? '',
         kind: 'missing',
         message: 'The file may have been moved or deleted.',
       });
-      return { ok: false, message: 'The file may have been moved or deleted.' };
     }
 
     this.busySignal.set(true);
@@ -318,29 +313,24 @@ export class ProjectSessionService {
         if (fromCache.ok) {
           return fromCache;
         }
-        await this.setRecentFailure({
+        return this.setRecentFailure({
           projectId,
           name: meta?.name ?? 'Project',
           fileName: meta?.fileName ?? '',
           kind: 'permission',
           message: 'Permission to read that file was denied.',
         });
-        return { ok: false, message: 'Permission to read that file was denied.' };
       }
       const { text, fileName } = await this.files.readHandle(handle);
       const validation = parseAndValidateProject(text);
       if (!validation.ok) {
-        const message = validation.reason
-          ? `${validation.message}: ${validation.reason}`
-          : validation.message;
-        await this.setRecentFailure({
+        return this.setRecentFailure({
           projectId,
           name: meta?.name ?? 'Project',
           fileName: meta?.fileName ?? '',
           kind: 'other',
-          message,
+          message: this.invalidFileMessage(validation),
         });
-        return { ok: false, message };
       }
 
       const pending = await this.maybeConflict(handle, validation.project, fileName);
@@ -365,14 +355,13 @@ export class ProjectSessionService {
           return fromCache;
         }
       }
-      await this.setRecentFailure({
+      return this.setRecentFailure({
         projectId,
         name: meta?.name ?? 'Project',
         fileName: meta?.fileName ?? '',
         kind,
         message,
       });
-      return { ok: false, message };
     } finally {
       this.busySignal.set(false);
     }
@@ -584,9 +573,7 @@ export class ProjectSessionService {
       const { text, fileName } = await this.files.readHandle(handle);
       const validation = parseAndValidateProject(text);
       if (!validation.ok) {
-        const message = validation.reason
-          ? `${validation.message}: ${validation.reason}`
-          : validation.message;
+        const message = this.invalidFileMessage(validation);
         this.uiErrorSignal.set(message);
         return { ok: false, message };
       }
@@ -638,9 +625,14 @@ export class ProjectSessionService {
     return true;
   }
 
-  private async setRecentFailure(failure: RecentOpenFailure): Promise<void> {
+  private invalidFileMessage(result: { message: string; reason: string }): string {
+    return result.reason ? `${result.message}: ${result.reason}` : result.message;
+  }
+
+  private async setRecentFailure(failure: RecentOpenFailure): Promise<SessionActionResult> {
     this.recentFailureSignal.set(failure);
     this.uiErrorSignal.set(null);
+    return { ok: false, message: failure.message };
   }
 
   private isMissingFileError(error: unknown): boolean {
