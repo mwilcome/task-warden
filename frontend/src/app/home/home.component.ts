@@ -21,6 +21,7 @@ import { BrandMarkComponent } from './brand-mark.component';
 })
 export class HomeComponent {
   protected readonly session = inject(ProjectSessionService);
+  protected readonly downloadProjectFileGuide = downloadProjectFileGuide;
 
   protected readonly editingName = signal(false);
   protected readonly nameDraft = signal('');
@@ -77,74 +78,9 @@ export class HomeComponent {
     this.projectsMenuOpen.update((open) => !open);
   }
 
-  async onNewProject(): Promise<void> {
+  protected runAndClose(action: () => unknown): void {
     this.projectsMenuOpen.set(false);
-    await this.session.newProject();
-  }
-
-  async onNewBrowserOnlyProject(): Promise<void> {
-    this.projectsMenuOpen.set(false);
-    await this.session.newBrowserOnlyProject();
-  }
-
-  async onOpenProject(): Promise<void> {
-    this.projectsMenuOpen.set(false);
-    await this.session.openProject();
-  }
-
-  async onOpenRecent(projectId: string): Promise<void> {
-    this.projectsMenuOpen.set(false);
-    await this.session.openRecent(projectId);
-  }
-
-  async onOpenLastProject(): Promise<void> {
-    this.projectsMenuOpen.set(false);
-    await this.session.openLastProject();
-  }
-
-  onDownloadProjectFileGuide(): void {
-    this.projectsMenuOpen.set(false);
-    downloadProjectFileGuide();
-  }
-
-  onCloseProject(): void {
-    this.session.closeProject();
-  }
-
-  async onRetrySave(): Promise<void> {
-    await this.session.retrySave();
-  }
-
-  async onReloadFromDisk(): Promise<void> {
-    await this.session.reloadFromDisk();
-  }
-
-  onDismissUiError(): void {
-    this.session.clearUiError();
-  }
-
-  onDismissRecentFailure(): void {
-    this.session.dismissRecentFailure();
-  }
-
-  async onRemoveFailedRecent(): Promise<void> {
-    await this.session.removeFailedRecent();
-  }
-
-  async onOpenFileForFailedRecent(): Promise<void> {
-    await this.session.openFileForFailedRecent();
-  }
-
-  async onConflictUseDisk(): Promise<void> {
-    await this.session.resolveConflictUseDisk();
-  }
-
-  async onConflictUseCache(): Promise<void> {
-    await this.session.resolveConflictUseCache();
-  }
-
-  onConflictCancel(): void {
-    this.session.dismissConflict();
+    void action();
   }
 
   onStartEditName(): void {

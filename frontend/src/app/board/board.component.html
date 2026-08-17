@@ -2,13 +2,12 @@
   <div class="alert alert-error board-status-error" role="alert">{{ err }}</div>
 }
 
-<div class="board" role="list" aria-label="Project board">
-  @for (column of columns(); track trackStatus($index, column)) {
+<div class="board" aria-label="Project board">
+  @for (column of columns(); track $index) {
     <section
       class="board-column"
       [attr.data-board-status]="column.status"
       [class.board-column--drag-over]="dragOverStatus() === column.status"
-      role="listitem"
       [attr.aria-label]="column.status"
       (dragover)="onColumnDragOver($event, column.status)"
       (dragleave)="onColumnDragLeave($event, column.status)"
@@ -17,7 +16,7 @@
       <header class="board-column__header">
         <div
           class="board-column__title-row"
-          draggable="true"
+          [attr.draggable]="renamingStatus() !== column.status"
           (dragstart)="onStatusDragStart($event, column.status)"
           (dragend)="onStatusDragEnd()"
           title="Drag to reorder columns"
@@ -94,7 +93,6 @@
           <article
             class="task-card"
             [class.task-card--dragging]="draggingTaskId() === task.id"
-            role="button"
             tabindex="0"
             (pointerdown)="onTaskPointerDown($event, task)"
             (keydown)="onCardKeydown($event, task)"

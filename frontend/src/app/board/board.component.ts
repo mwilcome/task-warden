@@ -63,6 +63,7 @@ export class BoardComponent {
   private renameCommitInFlight = false;
   protected readonly addingStatus = signal(false);
   protected readonly newStatusName = signal('');
+  private addStatusCommitInFlight = false;
 
   private readonly statusRenameInput =
     viewChild<ElementRef<HTMLInputElement>>('statusRenameInput');
@@ -234,20 +235,23 @@ export class BoardComponent {
     }
   }
 
+  private edgeScrollDelta(pos: number, start: number, end: number): number {
+    const edge = DRAG_SCROLL_EDGE_PX;
+    const maxStep = DRAG_SCROLL_MAX_STEP_PX;
+    if (pos < start + edge) {
+      return -Math.ceil(maxStep * Math.min(1, (start + edge - pos) / edge));
+    }
+    if (pos > end - edge) {
+      return Math.ceil(maxStep * Math.min(1, (pos - (end - edge)) / edge));
+    }
+    return 0;
+  }
+
   private applyDragAutoScroll(clientX: number, clientY: number): void {
     const board = document.querySelector('.app-main--board') as HTMLElement | null;
     if (board) {
       const rect = board.getBoundingClientRect();
-      const edge = DRAG_SCROLL_EDGE_PX;
-      const maxStep = DRAG_SCROLL_MAX_STEP_PX;
-      let stepX = 0;
-      if (clientX < rect.left + edge) {
-        const t = Math.min(1, (rect.left + edge - clientX) / edge);
-        stepX = -Math.ceil(maxStep * t);
-      } else if (clientX > rect.right - edge) {
-        const t = Math.min(1, (clientX - (rect.right - edge)) / edge);
-        stepX = Math.ceil(maxStep * t);
-      }
+      const stepX = this.edgeScrollDelta(clientX, rect.left, rect.right);
       if (stepX !== 0) {
         board.scrollLeft += stepX;
       }
@@ -256,16 +260,7 @@ export class BoardComponent {
     const cards = this.cardsListUnderPoint(clientX, clientY);
     if (cards) {
       const rect = cards.getBoundingClientRect();
-      const edge = DRAG_SCROLL_EDGE_PX;
-      const maxStep = DRAG_SCROLL_MAX_STEP_PX;
-      let stepY = 0;
-      if (clientY < rect.top + edge) {
-        const t = Math.min(1, (rect.top + edge - clientY) / edge);
-        stepY = -Math.ceil(maxStep * t);
-      } else if (clientY > rect.bottom - edge) {
-        const t = Math.min(1, (clientY - (rect.bottom - edge)) / edge);
-        stepY = Math.ceil(maxStep * t);
-      }
+      const stepY = this.edgeScrollDelta(clientY, rect.top, rect.bottom);
       if (stepY !== 0) {
         cards.scrollTop += stepY;
       }
@@ -297,32 +292,29 @@ export class BoardComponent {
     this.dragPointerPos = null;
   }
 
-  private cardsListUnderPoint(x: number, y: number): HTMLElement | null {
-    const stack = document.elementsFromPoint(x, y);
-    for (const el of stack) {
+  private closestFromPoint(x: number, y: number, selector: string): Element | null {
+    for (const el of document.elementsFromPoint(x, y)) {
       if (!(el instanceof Element)) {
         continue;
       }
-      const cards = el.closest('.board-column__cards');
-      if (cards instanceof HTMLElement) {
-        return cards;
+      const match = el.closest(selector);
+      if (match) {
+        return match;
       }
     }
     return null;
   }
 
+  private cardsListUnderPoint(x: number, y: number): HTMLElement | null {
+    const el = this.closestFromPoint(x, y, '.board-column__cards');
+    return el instanceof HTMLElement ? el : null;
+  }
+
   private statusUnderPoint(x: number, y: number): string | null {
-    const stack = document.elementsFromPoint(x, y);
-    for (const el of stack) {
-      if (!(el instanceof Element)) {
-        continue;
-      }
-      const col = el.closest('[data-board-status]');
-      if (col) {
-        return col.getAttribute('data-board-status');
-      }
-    }
-    return null;
+    return (
+      this.closestFromPoint(x, y, '[data-board-status]')?.getAttribute('data-board-status') ??
+      null
+    );
   }
 
   private teardownTaskPointerListeners(): void {
@@ -369,7 +361,8 @@ export class BoardComponent {
   }
 
   protected onStatusDragStart(event: DragEvent, status: string): void {
-    if (!event.dataTransfer) {
+    if (!event.dataTransfer || this.renamingStatus() === status) {
+      event.preventDefault();
       return;
     }
     event.stopPropagation();
@@ -471,13 +464,21 @@ export class BoardComponent {
   }
 
   protected async commitAddStatus(): Promise<void> {
-    this.statusError.set(null);
-    const result = await this.session.addStatus(this.newStatusName());
-    if (!result.ok) {
-      this.statusError.set(result.message);
+    if (!this.addingStatus() || this.addStatusCommitInFlight) {
       return;
     }
-    this.cancelAddStatus();
+    this.addStatusCommitInFlight = true;
+    this.statusError.set(null);
+    try {
+      const result = await this.session.addStatus(this.newStatusName());
+      if (!result.ok) {
+        this.statusError.set(result.message);
+        return;
+      }
+      this.cancelAddStatus();
+    } finally {
+      this.addStatusCommitInFlight = false;
+    }
   }
 
   private async dropStatusOn(fromStatus: string, toStatus: string): Promise<void> {
@@ -492,10 +493,6 @@ export class BoardComponent {
     if (!result.ok) {
       this.statusError.set(result.message);
     }
-  }
-
-  protected trackStatus(_index: number, column: { status: string }): string {
-    return column.status;
   }
 
   protected trackTask(_index: number, task: TwTask): string {

@@ -1,7 +1,7 @@
 @if (session.saveError(); as saveMsg) {
   <div class="save-banner" role="status" aria-live="polite">
     <span>{{ saveMsg }}</span>
-    <button type="button" class="btn btn-sm btn-secondary save-banner__retry" (click)="onRetrySave()">
+    <button type="button" class="btn btn-sm btn-secondary save-banner__retry" (click)="session.retrySave()">
       Try again
     </button>
   </div>
@@ -21,7 +21,7 @@
         type="button"
         class="btn btn-primary btn-sm"
         [disabled]="session.busy() || !session.fileSystemSupported"
-        (click)="onOpenFileForFailedRecent()"
+        (click)="session.openFileForFailedRecent()"
       >
         Open file…
       </button>
@@ -29,11 +29,11 @@
         type="button"
         class="btn btn-secondary btn-sm"
         [disabled]="session.busy()"
-        (click)="onRemoveFailedRecent()"
+        (click)="session.removeFailedRecent()"
       >
         Remove from recent
       </button>
-      <button type="button" class="btn btn-ghost btn-sm" (click)="onDismissRecentFailure()">
+      <button type="button" class="btn btn-ghost btn-sm" (click)="session.dismissRecentFailure()">
         Dismiss
       </button>
     </div>
@@ -60,7 +60,7 @@
         type="button"
         class="btn btn-primary btn-sm"
         [disabled]="session.busy()"
-        (click)="onConflictUseDisk()"
+        (click)="session.resolveConflictUseDisk()"
       >
         Use file
       </button>
@@ -68,11 +68,11 @@
         type="button"
         class="btn btn-secondary btn-sm"
         [disabled]="session.busy()"
-        (click)="onConflictUseCache()"
+        (click)="session.resolveConflictUseCache()"
       >
         Use browser copy
       </button>
-      <button type="button" class="btn btn-ghost btn-sm" (click)="onConflictCancel()">
+      <button type="button" class="btn btn-ghost btn-sm" (click)="session.dismissConflict()">
         Cancel
       </button>
     </div>
@@ -107,7 +107,7 @@
                 type="button"
                 class="projects-menu__item"
                 role="menuitem"
-                (click)="onNewProject()"
+                (click)="runAndClose(() => session.newProject())"
               >
                 New Project
               </button>
@@ -115,7 +115,7 @@
                 type="button"
                 class="projects-menu__item"
                 role="menuitem"
-                (click)="onOpenProject()"
+                (click)="runAndClose(() => session.openProject())"
               >
                 Open Project
               </button>
@@ -124,7 +124,7 @@
               type="button"
               class="projects-menu__item"
               role="menuitem"
-              (click)="onNewBrowserOnlyProject()"
+              (click)="runAndClose(() => session.newBrowserOnlyProject())"
             >
               New browser project
             </button>
@@ -133,7 +133,7 @@
                 type="button"
                 class="projects-menu__item"
                 role="menuitem"
-                (click)="onDownloadProjectFileGuide()"
+                (click)="runAndClose(() => downloadProjectFileGuide())"
               >
                 Download project file guide (.md)
               </button>
@@ -147,7 +147,7 @@
                 type="button"
                 class="projects-menu__item projects-menu__item--recent"
                 role="menuitem"
-                (click)="onOpenRecent(recent.id)"
+                (click)="runAndClose(() => session.openRecent(recent.id))"
               >
                 <span class="projects-menu__recent-name">{{ recent.name }}</span>
                 <span class="projects-menu__recent-file">{{
@@ -174,12 +174,12 @@
             class="btn btn-ghost btn-sm"
             title="Replace the board with the current file on disk"
             [disabled]="session.busy()"
-            (click)="onReloadFromDisk()"
+            (click)="session.reloadFromDisk()"
           >
             Reload from Disk
           </button>
         }
-        <button type="button" class="btn btn-ghost btn-sm" (click)="onCloseProject()">
+        <button type="button" class="btn btn-ghost btn-sm" (click)="session.closeProject()">
           Close
         </button>
       }
@@ -218,7 +218,7 @@
       <div class="container-wide">
         <div class="alert alert-error alert-error--row" role="alert">
           <span>{{ err }}</span>
-          <button type="button" class="btn btn-sm btn-secondary" (click)="onDismissUiError()">
+          <button type="button" class="btn btn-sm btn-secondary" (click)="session.clearUiError()">
             Dismiss
           </button>
         </div>
@@ -252,7 +252,7 @@
           @if (session.uiError(); as err) {
             <div class="alert alert-error open-prompt__error" role="alert">
               <p class="flush">{{ err }}</p>
-              <button type="button" class="btn btn-ghost btn-sm" (click)="onDismissUiError()">
+              <button type="button" class="btn btn-ghost btn-sm" (click)="session.clearUiError()">
                 Dismiss
               </button>
             </div>
@@ -271,7 +271,7 @@
                 type="button"
                 class="btn btn-primary"
                 [disabled]="session.busy()"
-                (click)="onNewProject()"
+                (click)="session.newProject()"
               >
                 New Project
               </button>
@@ -279,7 +279,7 @@
                 type="button"
                 class="btn btn-secondary"
                 [disabled]="session.busy()"
-                (click)="onOpenProject()"
+                (click)="session.openProject()"
               >
                 Open Project
               </button>
@@ -290,7 +290,7 @@
               [class.btn-primary]="!session.fileSystemSupported"
               [class.btn-secondary]="session.fileSystemSupported"
               [disabled]="session.busy()"
-              (click)="onNewBrowserOnlyProject()"
+              (click)="session.newBrowserOnlyProject()"
             >
               New browser project
             </button>
@@ -305,7 +305,7 @@
               <button
                 type="button"
                 class="btn btn-secondary btn-sm btn-block"
-                (click)="onDownloadProjectFileGuide()"
+                (click)="downloadProjectFileGuide()"
               >
                 Download project file guide (.md)
               </button>
@@ -320,7 +320,7 @@
                   type="button"
                   class="open-prompt__recent-btn"
                   [disabled]="session.busy()"
-                  (click)="onOpenRecent(recent.id)"
+                  (click)="session.openRecent(recent.id)"
                 >
                   <span class="open-prompt__recent-name">{{ recent.name }}</span>
                   <span class="open-prompt__recent-file">{{

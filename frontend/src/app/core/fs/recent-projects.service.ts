@@ -50,7 +50,6 @@ export class RecentProjectsService {
   ): Promise<void> {
     try {
       const db = await this.openDb();
-      const existing = await this.get(db, project.id);
       const record: RecentProjectRecord = {
         id: project.id,
         name: project.name,
@@ -59,9 +58,6 @@ export class RecentProjectsService {
         openedAt: new Date().toISOString(),
         handle,
       };
-      if (existing && !record.handle) {
-        record.handle = existing.handle;
-      }
       await this.put(db, record);
       await this.trim(db);
       await this.refresh();
@@ -89,15 +85,6 @@ export class RecentProjectsService {
     } catch {
       /* ignore */
     }
-  }
-
-  /** @deprecated Prefer recordFile — kept for call sites during transition. */
-  async record(
-    handle: FileSystemFileHandle,
-    project: TwProject,
-    fileName: string,
-  ): Promise<void> {
-    return this.recordFile(handle, project, fileName);
   }
 
   async getHandle(projectId: string): Promise<FileSystemFileHandle | null> {

@@ -30,6 +30,7 @@ import {
   renameProject,
   replaceTask,
   type CreateTaskInput,
+  type TaskOpResult,
   type UpdateTaskInput,
 } from './task-ops';
 import { parseAndValidateProject } from './validate-project';
@@ -85,8 +86,6 @@ export class ProjectSessionService {
   readonly hasWorkspace = computed(
     () => this.fileHandleSignal() !== null || this.cacheOnlySignal(),
   );
-  /** @deprecated Prefer hasFile / hasWorkspace. */
-  readonly hasProject = computed(() => this.hasFile());
   readonly fileSystemSupported = this.files.isSupported();
   readonly recentProjects = this.recents.list;
   readonly recentFailure = this.recentFailureSignal.asReadonly();
@@ -481,103 +480,75 @@ export class ProjectSessionService {
     return { ok: true };
   }
 
-  async createTask(input: CreateTaskInput): Promise<SessionActionResult> {
+  private applyOp(
+    op: (current: TwProject) => TaskOpResult<TwProject>,
+  ): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    const built = buildNewTask(input, current.statuses);
-    if (!built.ok) {
-      return { ok: false, message: built.reason };
+    const result = op(current);
+    if (!result.ok) {
+      return Promise.resolve({ ok: false, message: result.reason });
     }
-    return this.updateProject((p) => addTask(p, built.value));
+    if (result.value === current) {
+      return Promise.resolve({ ok: true });
+    }
+    return this.updateProject(() => result.value);
+  }
+
+  async createTask(input: CreateTaskInput): Promise<SessionActionResult> {
+    return this.applyOp((p) => {
+      const built = buildNewTask(input, p.statuses);
+      if (!built.ok) {
+        return built;
+      }
+      return { ok: true, value: addTask(p, built.value) };
+    });
   }
 
   async saveTask(taskId: string, input: UpdateTaskInput): Promise<SessionActionResult> {
-    const current = this.projectSignal();
-    const existing = findTask(current, taskId);
-    if (!existing) {
-      return { ok: false, message: 'Task not found.' };
-    }
-    const updated = applyTaskUpdate(existing, input, current.statuses);
-    if (!updated.ok) {
-      return { ok: false, message: updated.reason };
-    }
-    return this.updateProject((p) => replaceTask(p, updated.value));
+    return this.applyOp((p) => {
+      const existing = findTask(p, taskId);
+      if (!existing) {
+        return { ok: false, reason: 'Task not found.' };
+      }
+      const updated = applyTaskUpdate(existing, input, p.statuses);
+      if (!updated.ok) {
+        return updated;
+      }
+      return { ok: true, value: replaceTask(p, updated.value) };
+    });
   }
 
   async deleteTask(taskId: string): Promise<SessionActionResult> {
-    const current = this.projectSignal();
-    if (!findTask(current, taskId)) {
-      return { ok: false, message: 'Task not found.' };
-    }
-    return this.updateProject((p) => removeTask(p, taskId));
+    return this.applyOp((p) => {
+      if (!findTask(p, taskId)) {
+        return { ok: false, reason: 'Task not found.' };
+      }
+      return { ok: true, value: removeTask(p, taskId) };
+    });
   }
 
   async moveTask(taskId: string, newStatus: string): Promise<SessionActionResult> {
-    const current = this.projectSignal();
-    const moved = moveTaskToStatus(current, taskId, newStatus);
-    if (!moved.ok) {
-      return { ok: false, message: moved.reason };
-    }
-    if (moved.value === current) {
-      return { ok: true };
-    }
-    return this.updateProject(() => moved.value);
+    return this.applyOp((p) => moveTaskToStatus(p, taskId, newStatus));
   }
 
   async setProjectName(name: string): Promise<SessionActionResult> {
-    const current = this.projectSignal();
-    const renamed = renameProject(current, name);
-    if (!renamed.ok) {
-      return { ok: false, message: renamed.reason };
-    }
-    if (renamed.value === current || renamed.value.name === current.name) {
-      if (renamed.value.name !== current.name) {
-        return this.updateProject(() => renamed.value);
-      }
-      return { ok: true };
-    }
-    return this.updateProject(() => renamed.value);
+    return this.applyOp((p) => renameProject(p, name));
   }
 
   async addStatus(name: string): Promise<SessionActionResult> {
-    const current = this.projectSignal();
-    const result = addStatus(current, name);
-    if (!result.ok) {
-      return { ok: false, message: result.reason };
-    }
-    return this.updateProject(() => result.value);
+    return this.applyOp((p) => addStatus(p, name));
   }
 
   async renameStatus(oldName: string, newName: string): Promise<SessionActionResult> {
-    const current = this.projectSignal();
-    const result = renameStatus(current, oldName, newName);
-    if (!result.ok) {
-      return { ok: false, message: result.reason };
-    }
-    if (result.value === current) {
-      return { ok: true };
-    }
-    return this.updateProject(() => result.value);
+    return this.applyOp((p) => renameStatus(p, oldName, newName));
   }
 
   async reorderStatuses(fromIndex: number, toIndex: number): Promise<SessionActionResult> {
-    const current = this.projectSignal();
-    const result = reorderStatuses(current, fromIndex, toIndex);
-    if (!result.ok) {
-      return { ok: false, message: result.reason };
-    }
-    if (result.value === current) {
-      return { ok: true };
-    }
-    return this.updateProject(() => result.value);
+    return this.applyOp((p) => reorderStatuses(p, fromIndex, toIndex));
   }
 
   async deleteStatus(name: string): Promise<SessionActionResult> {
-    const current = this.projectSignal();
-    const result = deleteStatus(current, name);
-    if (!result.ok) {
-      return { ok: false, message: result.reason };
-    }
-    return this.updateProject(() => result.value);
+    return this.applyOp((p) => deleteStatus(p, name));
   }
 
   async retrySave(): Promise<SessionActionResult> {

@@ -31,7 +31,7 @@ describe('status-ops', () => {
       return;
     }
     project = addTask(project, t.value);
-    const renamed = renameStatus(project, 'Todo', 'Backlog');
+    const renamed = renameStatus(project, '  Todo  ', 'Backlog');
     expect(renamed.ok).toBe(true);
     if (renamed.ok) {
       expect(renamed.value.statuses[0]).toBe('Backlog');

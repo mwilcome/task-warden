@@ -51,15 +51,16 @@ export function renameStatus(
   oldName: string,
   newName: string,
 ): TaskOpResult<TwProject> {
+  const from = normalizeStatusName(oldName);
   const trimmed = normalizeStatusName(newName);
   if (!trimmed) {
     return { ok: false, reason: 'Status name is required.' };
   }
-  const index = project.statuses.indexOf(oldName);
+  const index = project.statuses.indexOf(from);
   if (index < 0) {
     return { ok: false, reason: 'Status not found.' };
   }
-  if (trimmed === oldName) {
+  if (trimmed === from) {
     return { ok: true, value: project };
   }
   if (project.statuses.includes(trimmed)) {
@@ -68,7 +69,7 @@ export function renameStatus(
 
   const statuses = project.statuses.map((s, i) => (i === index ? trimmed : s));
   const tasks = project.tasks.map((t) =>
-    t.status === oldName ? { ...t, status: trimmed } : t,
+    t.status === from ? { ...t, status: trimmed } : t,
   );
   return { ok: true, value: syncClosedFields({ ...project, statuses, tasks }) };
 }
