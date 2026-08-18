@@ -56,6 +56,7 @@ export class BoardComponent {
 
   protected readonly panel = signal<TaskPanelMode | null>(null);
   protected readonly dropColumn = signal<string | null>(null);
+  protected readonly dropBeforeTaskId = signal<string | null>(null);
   protected readonly draggingTaskId = signal<string | null>(null);
   protected readonly draggingColumn = signal<string | null>(null);
   protected readonly dragPreview = signal<DragPreview | null>(null);
@@ -189,8 +190,8 @@ export class BoardComponent {
 
     const wasActive = drag.active;
     const taskId = drag.taskId;
-    const dropColumn = wasActive
-      ? this.columnUnderPoint(event.clientX, event.clientY)
+    const insert = wasActive
+      ? this.taskInsertPoint(event.clientX, event.clientY, taskId)
       : null;
 
     this.stopDragScrollLoop();
@@ -203,6 +204,7 @@ export class BoardComponent {
     this.taskDrag = null;
     this.draggingTaskId.set(null);
     this.dropColumn.set(null);
+    this.dropBeforeTaskId.set(null);
     this.dragPreview.set(null);
     document.body.classList.remove('is-dragging-task');
 
@@ -214,8 +216,8 @@ export class BoardComponent {
       return;
     }
 
-    if (dropColumn && dropColumn !== drag.fromStatus) {
-      await this.session.moveTask(taskId, dropColumn);
+    if (insert) {
+      await this.session.moveTask(taskId, insert.status, insert.beforeTaskId);
     }
   }
 
@@ -228,9 +230,14 @@ export class BoardComponent {
         y: clientY - 20,
       });
     }
-    const column = this.columnUnderPoint(clientX, clientY);
+    const insert = this.taskInsertPoint(clientX, clientY, this.draggingTaskId() ?? '');
+    const column = insert?.status ?? null;
+    const beforeId = insert?.beforeTaskId ?? null;
     if (column !== this.dropColumn()) {
       this.dropColumn.set(column);
+    }
+    if (beforeId !== this.dropBeforeTaskId()) {
+      this.dropBeforeTaskId.set(beforeId);
     }
   }
 
@@ -314,6 +321,52 @@ export class BoardComponent {
       this.closestFromPoint(x, y, '[data-board-status]')?.getAttribute('data-board-status') ??
       null
     );
+  }
+
+  private taskInsertPoint(
+    x: number,
+    y: number,
+    draggingId: string,
+  ): { status: string; beforeTaskId: string | null } | null {
+    const status = this.columnUnderPoint(x, y);
+    if (!status) {
+      return null;
+    }
+
+    let hoverCard: HTMLElement | null = null;
+    for (const el of document.elementsFromPoint(x, y)) {
+      if (!(el instanceof Element)) {
+        continue;
+      }
+      const card = el.closest('.task-card');
+      if (card instanceof HTMLElement && card.dataset['taskId'] !== draggingId) {
+        hoverCard = card;
+        break;
+      }
+    }
+
+    if (!hoverCard) {
+      const columnTasks = this.columns().find((c) => c.status === status)?.tasks ?? [];
+      const i = columnTasks.findIndex((t) => t.id === draggingId);
+      return { status, beforeTaskId: i >= 0 ? (columnTasks[i + 1]?.id ?? null) : null };
+    }
+
+    const hoverId = hoverCard.dataset['taskId'] ?? null;
+    if (!hoverId) {
+      return { status, beforeTaskId: null };
+    }
+
+    const rect = hoverCard.getBoundingClientRect();
+    if (y < rect.top + rect.height / 2) {
+      return { status, beforeTaskId: hoverId };
+    }
+
+    const columnTasks = this.columns().find((c) => c.status === status)?.tasks ?? [];
+    let next = columnTasks.findIndex((t) => t.id === hoverId) + 1;
+    if (columnTasks[next]?.id === draggingId) {
+      next += 1;
+    }
+    return { status, beforeTaskId: columnTasks[next]?.id ?? null };
   }
 
   private removeTaskDragListeners(): void {

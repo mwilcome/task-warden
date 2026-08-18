@@ -92,7 +92,9 @@
         @for (task of column.tasks; track task.id) {
           <article
             class="task-card"
+            [attr.data-task-id]="task.id"
             [class.task-card--dragging]="draggingTaskId() === task.id"
+            [class.task-card--drop-before]="dropBeforeTaskId() === task.id"
             tabindex="0"
             (pointerdown)="onTaskPointerDown($event, task)"
             (keydown)="onCardKeydown($event, task)"

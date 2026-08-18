@@ -153,6 +153,7 @@ export function moveTaskToStatus(
   taskId: string,
   newStatus: string,
   now: string = utcNowIso(),
+  beforeTaskId?: string | null,
 ): TaskOpResult<TwProject> {
   const existing = findTask(project, taskId);
   if (!existing) {
@@ -161,25 +162,61 @@ export function moveTaskToStatus(
   if (!project.statuses.includes(newStatus)) {
     return { ok: false, reason: 'Status is not in the project statuses list.' };
   }
-  if (existing.status === newStatus) {
+  const sameStatus = existing.status === newStatus;
+  if (sameStatus && beforeTaskId === undefined) {
     return { ok: true, value: project };
   }
-  const updated = applyTaskUpdate(
-    existing,
-    {
-      title: existing.title,
-      description: existing.description,
-      points: existing.points,
-      assigned: existing.assigned,
-      status: newStatus,
-    },
-    project.statuses,
-    now,
-  );
-  if (!updated.ok) {
-    return updated;
+
+  let task = existing;
+  if (!sameStatus) {
+    const updated = applyTaskUpdate(
+      existing,
+      {
+        title: existing.title,
+        description: existing.description,
+        points: existing.points,
+        assigned: existing.assigned,
+        status: newStatus,
+      },
+      project.statuses,
+      now,
+    );
+    if (!updated.ok) {
+      return updated;
+    }
+    task = updated.value;
   }
-  return { ok: true, value: replaceTask(project, updated.value) };
+
+  if (beforeTaskId === undefined) {
+    return { ok: true, value: replaceTask(project, task) };
+  }
+  if (beforeTaskId === taskId) {
+    return { ok: true, value: sameStatus ? project : replaceTask(project, task) };
+  }
+
+  const without = project.tasks.filter((t) => t.id !== taskId);
+  let insertAt = insertAfterLastOfStatus(without, newStatus);
+  if (beforeTaskId) {
+    const idx = without.findIndex((t) => t.id === beforeTaskId);
+    if (idx >= 0) {
+      insertAt = idx;
+    }
+  }
+  const tasks = [...without.slice(0, insertAt), task, ...without.slice(insertAt)];
+  if (sameStatus && tasks.every((t, i) => t.id === project.tasks[i]?.id)) {
+    return { ok: true, value: project };
+  }
+  return { ok: true, value: { ...project, tasks } };
+}
+
+function insertAfterLastOfStatus(tasks: TwTask[], status: string): number {
+  let last = -1;
+  for (let i = 0; i < tasks.length; i++) {
+    if (tasks[i].status === status) {
+      last = i;
+    }
+  }
+  return last + 1;
 }
 
 export function renameProject(

@@ -141,6 +141,22 @@ describe('task-ops', () => {
     }
   });
 
+  it('moveTaskToStatus can reorder within a column', () => {
+    let project = createEmptyProject();
+    const a = buildNewTask({ title: 'A', status: 'Todo' }, project.statuses, now);
+    const b = buildNewTask({ title: 'B', status: 'Todo' }, project.statuses, now);
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) {
+      return;
+    }
+    project = addTask(addTask(project, a.value), b.value);
+    const moved = moveTaskToStatus(project, b.value.id, 'Todo', now, a.value.id);
+    expect(moved.ok).toBe(true);
+    if (moved.ok) {
+      expect(moved.value.tasks.map((t) => t.title)).toEqual(['B', 'A']);
+    }
+  });
+
   it('renameProject trims and rejects empty', () => {
     const project = createEmptyProject();
     const ok = renameProject(project, '  Alpha  ');

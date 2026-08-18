@@ -29,6 +29,7 @@ import {
   removeTask,
   renameProject,
   replaceTask,
+  utcNowIso,
   type CreateTaskInput,
   type TaskOpResult,
   type UpdateTaskInput,
@@ -516,8 +517,12 @@ export class ProjectSessionService {
     });
   }
 
-  async moveTask(taskId: string, newStatus: string): Promise<SessionActionResult> {
-    return this.applyOp((p) => moveTaskToStatus(p, taskId, newStatus));
+  async moveTask(
+    taskId: string,
+    newStatus: string,
+    beforeTaskId?: string | null,
+  ): Promise<SessionActionResult> {
+    return this.applyOp((p) => moveTaskToStatus(p, taskId, newStatus, utcNowIso(), beforeTaskId));
   }
 
   async setProjectName(name: string): Promise<SessionActionResult> {
