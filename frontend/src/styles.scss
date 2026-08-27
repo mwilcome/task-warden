@@ -1303,10 +1303,9 @@ body.is-task-dragging {
     padding-inline: var(--space-3);
   }
 
-  .board-column {
-    flex-basis: 14rem;
-    width: 14rem;
-    min-width: 14rem;
+  /* Center + min-width 100% squeezes columns into the viewport on iOS. */
+  .board {
+    justify-content: flex-start;
   }
 }
 
