@@ -10,7 +10,7 @@ export {
 } from './project.types';
 export { createEmptyProject } from './create-empty-project';
 export { parseAndValidateProject, validateProject } from './validate-project';
-export { createUuidV4, isUuidV4 } from './uuid';
+export { createProjectId, isNonEmptyId, nextTaskId } from './ids';
 export {
   ProjectSessionService,
   SAVE_FAILED_MESSAGE,

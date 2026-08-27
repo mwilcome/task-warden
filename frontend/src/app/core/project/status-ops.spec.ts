@@ -25,7 +25,7 @@ describe('status-ops', () => {
 
   it('renameStatus updates statuses and tasks', () => {
     let project = createEmptyProject();
-    const t = buildNewTask({ title: 'A', status: 'Todo' }, project.statuses, now);
+    const t = buildNewTask({ title: 'A', status: 'Todo' }, project.statuses, project.tasks, now);
     expect(t.ok).toBe(true);
     if (!t.ok) {
       return;
@@ -41,7 +41,7 @@ describe('status-ops', () => {
 
   it('reorderStatuses changes column order and syncs closed', () => {
     let project = createEmptyProject();
-    const t = buildNewTask({ title: 'A', status: 'Todo' }, project.statuses, now);
+    const t = buildNewTask({ title: 'A', status: 'Todo' }, project.statuses, project.tasks, now);
     expect(t.ok).toBe(true);
     if (!t.ok) {
       return;
@@ -59,7 +59,7 @@ describe('status-ops', () => {
 
   it('deleteStatus blocks non-empty and last remaining status', () => {
     let project = createEmptyProject();
-    const t = buildNewTask({ title: 'A', status: 'Todo' }, project.statuses, now);
+    const t = buildNewTask({ title: 'A', status: 'Todo' }, project.statuses, project.tasks, now);
     expect(t.ok).toBe(true);
     if (!t.ok) {
       return;
@@ -77,7 +77,7 @@ describe('status-ops', () => {
 
   it('syncClosedFields clears closed when no longer last', () => {
     let project = createEmptyProject();
-    const t = buildNewTask({ title: 'A', status: 'Done' }, project.statuses, now);
+    const t = buildNewTask({ title: 'A', status: 'Done' }, project.statuses, project.tasks, now);
     expect(t.ok).toBe(true);
     if (!t.ok) {
       return;

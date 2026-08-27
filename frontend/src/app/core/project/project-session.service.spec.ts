@@ -393,8 +393,7 @@ describe('ProjectSessionService', () => {
     expect(result.ok).toBe(true);
     expect(session.project()?.tasks).toHaveLength(1);
     expect(session.project()?.tasks[0].title).toBe('First');
-    expect(session.project()?.tasks[0].points).toBeNull();
-    expect(session.project()?.tasks[0].assigned).toBeNull();
+    expect(session.project()?.tasks[0].id).toBe('t1');
     expect(files.write).toHaveBeenCalled();
   });
 

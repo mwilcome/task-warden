@@ -420,11 +420,10 @@ export class ProjectSessionService {
       {
         title: input.title,
         description: input.description,
-        points: null,
-        assigned: null,
         status: input.status,
       },
       current.statuses,
+      current.tasks,
     );
     if (!built.ok) {
       return { ok: false, message: built.reason };
@@ -446,8 +445,6 @@ export class ProjectSessionService {
       {
         title: input.title,
         description: input.description,
-        points: existing.points,
-        assigned: existing.assigned,
         status: existing.status,
       },
       current.statuses,
