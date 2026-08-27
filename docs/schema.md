@@ -57,4 +57,4 @@ Keep valid JSON. Do not add new top-level fields. Use a new UUID v4 for each new
 
 ### In-app download
 
-Task Warden can **Download project file guide (.md)** from the start dialog or the Projects menu. That guide is meant for a local AI that edits project files on disk.
+Task Warden can **Download schema (.md)** from create-or-open or the Projects menu. That guide is a static markdown schema/prompt for a local agent that edits project files on disk. It is not an AI hub.

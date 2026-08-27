@@ -5,13 +5,8 @@ dist/
 out-tsc/
 *.tsbuildinfo
 
-# Java / Maven
-backend/target/
-*.class
-*.jar
-*.war
-*.ear
-hs_err_pid*
+# Netlify CLI local folder
+.netlify/
 
 # IDE / OS
 .idea/

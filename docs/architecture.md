@@ -13,10 +13,10 @@ frontend/src/
     app.routes.ts
     core/
       project/             project model, validation, session
-      fs/                  file access, recents, browser cache
-    home/                  header, open dialog, shell
+      fs/                  File System Access, recents paths, Safari download
+    home/                  create-or-open, header, shell
     board/                 columns and cards
-    task-panel/            create / edit / delete task
+    task-panel/            title, body, confirm-delete
 ```
 
 ## Layers
@@ -25,10 +25,12 @@ frontend/src/
 |-------|----------|----------------|
 | Domain | `core/project/` pure modules | Types, validation, task/status ops (no DOM) |
 | Application | services in `core/` | Session orchestration, save/open |
-| Infrastructure | `core/fs/` | File System Access, IndexedDB, localStorage |
+| Infrastructure | `core/fs/` | File System Access, recents handles, upload/download |
 | UI | feature folders | Templates and user events |
 
 UI calls services. Services call domain helpers and `fs`. Domain code does not call the browser file API.
+
+Recents store last few disk paths (File System Access handles). Recents do not store project JSON. Safari has no fake filesystem and no IndexedDB-as-disk.
 
 ## Styling
 

@@ -516,14 +516,6 @@ export class BoardComponent {
     }
   }
 
-  protected trackStatus(_index: number, column: { status: string }): string {
-    return column.status;
-  }
-
-  protected trackTask(_index: number, task: TwTask): string {
-    return task.id;
-  }
-
   protected canMoveLeft(status: string): boolean {
     const statuses = this.session.project()?.statuses ?? [];
     return statuses.indexOf(status) > 0;

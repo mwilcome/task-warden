@@ -12,7 +12,7 @@ export function buildProjectFileGuide(): string {
 
 This file explains the Task Warden project format.
 
-**What it is for:** hand this guide to a local AI (or any tool) so it can read and edit a \`.tw.json\` project file on your computer.
+**What it is for:** hand this guide to a local agent (or any tool) so it can read and edit a \`.tw.json\` project file on your computer. Task Warden does not run AI in the app.
 
 **File extension:** \`.tw.json\`  
 **Schema version:** ${SCHEMA_VERSION} (must match exactly)

@@ -469,8 +469,8 @@ app-brand-mark {
   flex-shrink: 0;
 }
 
-/* Disk vs browser cache conflict */
-.cache-conflict {
+/* Disk file changed under the open handle — reload or overwrite */
+.dirty-file {
   position: sticky;
   top: 0;
   z-index: 55;
@@ -485,7 +485,7 @@ app-brand-mark {
   border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 22%, var(--color-border));
 }
 
-.cache-conflict__text {
+.dirty-file__text {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -493,22 +493,22 @@ app-brand-mark {
   flex: 1;
 }
 
-.cache-conflict__title {
+.dirty-file__title {
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-sm);
   color: var(--color-warning);
 }
 
-.cache-conflict__body {
+.dirty-file__body {
   font-size: var(--font-size-sm);
   color: var(--color-text);
 }
 
-.cache-conflict__meta {
+.dirty-file__meta {
   font-size: 0.75rem;
 }
 
-.cache-conflict__actions {
+.dirty-file__actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -709,7 +709,7 @@ app-brand-mark {
   font-weight: var(--font-weight-medium);
 }
 
-/* --- Board stage + open prompt overlay (Draw.io-style page behind) -------- */
+/* --- Board stage + create-or-open (empty board is blocked until a project exists) */
 
 .board-stage {
   position: relative;
@@ -728,6 +728,12 @@ app-brand-mark {
   justify-content: center;
   padding: var(--space-5);
   pointer-events: none;
+}
+
+.open-prompt-layer--page {
+  position: relative;
+  flex: 1;
+  pointer-events: auto;
 }
 
 .open-prompt-backdrop {

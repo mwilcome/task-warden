@@ -5,7 +5,6 @@ import {
   ProjectFileRepository,
   UserCancelledFilePickerError,
 } from '../fs/project-file.repository';
-import { ProjectCacheService } from '../fs/project-cache.service';
 import { RecentProjectsService } from '../fs/recent-projects.service';
 import { createEmptyProject } from './create-empty-project';
 import { INVALID_FILE_MESSAGE, SCHEMA_VERSION } from './project.types';
@@ -21,14 +20,17 @@ describe('ProjectSessionService', () => {
     pickAndRead: ReturnType<typeof vi.fn>;
     pickLocationAndWrite: ReturnType<typeof vi.fn>;
     readHandle: ReturnType<typeof vi.fn>;
+    getLastModified: ReturnType<typeof vi.fn>;
     write: ReturnType<typeof vi.fn>;
+    download: ReturnType<typeof vi.fn>;
   };
-  let cache: {
-    getLastProjectId: ReturnType<typeof vi.fn>;
-    setLastProjectId: ReturnType<typeof vi.fn>;
-    put: ReturnType<typeof vi.fn>;
-    get: ReturnType<typeof vi.fn>;
+  let recents: {
+    list: ReturnType<ReturnType<typeof signal>['asReadonly']>;
+    record: ReturnType<typeof vi.fn>;
+    getHandle: ReturnType<typeof vi.fn>;
+    getMeta: ReturnType<typeof vi.fn>;
     remove: ReturnType<typeof vi.fn>;
+    refresh: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -37,37 +39,32 @@ describe('ProjectSessionService', () => {
       pickAndRead: vi.fn(),
       pickLocationAndWrite: vi.fn(),
       readHandle: vi.fn(),
+      getLastModified: vi.fn(async () => 1),
       write: vi.fn(async () => undefined),
+      download: vi.fn(),
     };
-    cache = {
-      getLastProjectId: vi.fn(() => null),
-      setLastProjectId: vi.fn(),
-      put: vi.fn(async () => undefined),
-      get: vi.fn(async () => null),
+    recents = {
+      list: signal([]).asReadonly(),
+      record: vi.fn(async () => undefined),
+      getHandle: vi.fn(async () => null),
+      getMeta: vi.fn(async () => null),
       remove: vi.fn(async () => undefined),
+      refresh: vi.fn(async () => undefined),
     };
 
     TestBed.configureTestingModule({
       providers: [
         ProjectSessionService,
         { provide: ProjectFileRepository, useValue: files },
-        { provide: ProjectCacheService, useValue: cache },
-        {
-          provide: RecentProjectsService,
-          useValue: {
-            list: signal([]).asReadonly(),
-            record: vi.fn(async () => undefined),
-            recordFile: vi.fn(async () => undefined),
-            recordBrowser: vi.fn(async () => undefined),
-            getHandle: vi.fn(async () => null),
-            getMeta: vi.fn(async () => null),
-            remove: vi.fn(async () => undefined),
-            refresh: vi.fn(async () => undefined),
-          },
-        },
+        { provide: RecentProjectsService, useValue: recents },
       ],
     });
     session = TestBed.inject(ProjectSessionService);
+  });
+
+  it('starts with no workspace (empty board blocked)', () => {
+    expect(session.hasWorkspace()).toBe(false);
+    expect(session.project()).toBeNull();
   });
 
   it('newProject creates template, writes file, opens session', async () => {
@@ -80,18 +77,19 @@ describe('ProjectSessionService', () => {
           tasks: [],
         }),
       );
-      return { handle, fileName: 'untitled.tw.json' };
+      return { handle, fileName: 'untitled.tw.json', lastModified: 1 };
     });
 
     const result = await session.newProject();
     expect(result.ok).toBe(true);
     expect(session.hasFile()).toBe(true);
+    expect(session.hasWorkspace()).toBe(true);
     expect(session.fileName()).toBe('untitled.tw.json');
     expect(session.project()?.version).toBe(SCHEMA_VERSION);
     expect(session.saveError()).toBeNull();
   });
 
-  it('newProject cancelled keeps draft board without a file', async () => {
+  it('newProject cancelled opens nothing', async () => {
     files.pickLocationAndWrite.mockRejectedValue(new UserCancelledFilePickerError());
     const result = await session.newProject();
     expect(result.ok).toBe(false);
@@ -99,7 +97,22 @@ describe('ProjectSessionService', () => {
       expect(result.cancelled).toBe(true);
     }
     expect(session.hasFile()).toBe(false);
-    expect(session.project()).toBeTruthy();
+    expect(session.hasWorkspace()).toBe(false);
+    expect(session.project()).toBeNull();
+  });
+
+  it('newProject without File System Access uses memory + download', async () => {
+    files.isSupported.mockReturnValue(false);
+    const result = await session.newProject();
+    expect(result.ok).toBe(true);
+    expect(session.hasFile()).toBe(false);
+    expect(session.needsDownload()).toBe(true);
+    expect(session.hasWorkspace()).toBe(true);
+    expect(session.project()?.name).toBe('Untitled Project');
+
+    const downloaded = session.downloadProject();
+    expect(downloaded.ok).toBe(true);
+    expect(files.download).toHaveBeenCalled();
   });
 
   it('openProject loads valid file into session', async () => {
@@ -109,6 +122,7 @@ describe('ProjectSessionService', () => {
       handle,
       text: JSON.stringify(project),
       fileName: 'demo.tw.json',
+      lastModified: 10,
     });
 
     const result = await session.openProject();
@@ -122,12 +136,13 @@ describe('ProjectSessionService', () => {
       handle: { name: 'bad.tw.json' } as FileSystemFileHandle,
       text: '{ not json',
       fileName: 'bad.tw.json',
+      lastModified: 1,
     });
 
     const result = await session.openProject();
     expect(result.ok).toBe(false);
     expect(session.hasFile()).toBe(false);
-    expect(session.project()).toBeTruthy();
+    expect(session.project()).toBeNull();
     expect(session.uiError()).toContain(INVALID_FILE_MESSAGE);
     expect(session.uiError()?.startsWith(INVALID_FILE_MESSAGE)).toBe(true);
   });
@@ -138,6 +153,7 @@ describe('ProjectSessionService', () => {
       handle: { name: 'old.tw.json' } as FileSystemFileHandle,
       text: JSON.stringify(project),
       fileName: 'old.tw.json',
+      lastModified: 1,
     });
 
     const result = await session.openProject();
@@ -145,10 +161,25 @@ describe('ProjectSessionService', () => {
     expect(session.uiError()).toContain(INVALID_FILE_MESSAGE);
   });
 
-  it('updateProject mutates memory and auto-saves full object', async () => {
+  it('openUploadedFile loads valid JSON into a download-only session', async () => {
     const project = createEmptyProject();
+    const file = new File([JSON.stringify(project)], 'phone.tw.json', {
+      type: 'application/json',
+    });
+    const result = await session.openUploadedFile(file);
+    expect(result.ok).toBe(true);
+    expect(session.needsDownload()).toBe(true);
+    expect(session.project()?.id).toBe(project.id);
+    expect(session.fileName()).toBe('phone.tw.json');
+  });
+
+  it('updateProject mutates memory and auto-saves full object', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
     await session.newProject();
 
     const result = await session.updateProject((p) => ({ ...p, name: 'Renamed' }));
@@ -162,7 +193,11 @@ describe('ProjectSessionService', () => {
 
   it('updateProject keeps memory and sets banner when save fails', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
     await session.newProject();
     files.write.mockRejectedValue(new Error('disk full'));
 
@@ -172,9 +207,54 @@ describe('ProjectSessionService', () => {
     expect(session.saveError()).toBe(SAVE_FAILED_MESSAGE);
   });
 
+  it('updateProject parks dirty-file when disk lastModified changed', async () => {
+    const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
+    files.getLastModified.mockResolvedValue(1);
+    await session.newProject();
+    files.write.mockClear();
+    files.getLastModified.mockResolvedValue(99);
+
+    const result = await session.updateProject((p) => ({ ...p, name: 'Stale' }));
+    expect(result.ok).toBe(false);
+    expect(session.project()?.name).toBe('Stale');
+    expect(session.dirtyFile()?.fileName).toBe('x.tw.json');
+    expect(files.write).not.toHaveBeenCalled();
+  });
+
+  it('resolveDirtyOverwrite writes memory to disk', async () => {
+    const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
+    files.getLastModified.mockResolvedValue(1);
+    await session.newProject();
+    files.getLastModified.mockResolvedValue(99);
+    await session.updateProject((p) => ({ ...p, name: 'KeepMe' }));
+    files.write.mockClear();
+    files.getLastModified.mockResolvedValue(100);
+
+    const result = await session.resolveDirtyOverwrite();
+    expect(result.ok).toBe(true);
+    expect(session.dirtyFile()).toBeNull();
+    expect(files.write).toHaveBeenCalled();
+    const written = files.write.mock.calls.at(-1)?.[1] as { name: string };
+    expect(written.name).toBe('KeepMe');
+  });
+
   it('retrySave clears banner when write succeeds', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
     await session.newProject();
     files.write.mockRejectedValueOnce(new Error('fail'));
     await session.updateProject((p) => ({ ...p, name: 'A' }));
@@ -186,18 +266,22 @@ describe('ProjectSessionService', () => {
     expect(session.saveError()).toBeNull();
   });
 
-  it('closeProject detaches file and resets to empty draft board', async () => {
+  it('closeProject detaches file and returns to create-or-open', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
     await session.newProject();
     session.closeProject();
     expect(session.hasFile()).toBe(false);
+    expect(session.hasWorkspace()).toBe(false);
     expect(session.fileName()).toBeNull();
-    expect(session.project()).toBeTruthy();
-    expect(session.project()?.tasks).toEqual([]);
+    expect(session.project()).toBeNull();
   });
 
-  it('surfaces unsupported browser message', async () => {
+  it('surfaces unsupported browser message on Chrome picker path', async () => {
     files.isSupported.mockReturnValue(false);
     const result = await session.openProject();
     expect(result.ok).toBe(false);
@@ -205,43 +289,53 @@ describe('ProjectSessionService', () => {
     expect(new FileSystemUnsupportedError().message).toContain('Chrome or Edge');
   });
 
-  it('createTask adds a task and auto-saves', async () => {
+  it('createTask adds a task and auto-saves without assigned/points UI fields', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
     await session.newProject();
 
-    const result = await session.createTask({ title: 'First', status: 'Todo', points: 2 });
+    const result = await session.createTask({ title: 'First', status: 'Todo' });
     expect(result.ok).toBe(true);
     expect(session.project()?.tasks).toHaveLength(1);
     expect(session.project()?.tasks[0].title).toBe('First');
-    expect(session.project()?.tasks[0].points).toBe(2);
+    expect(session.project()?.tasks[0].points).toBeNull();
+    expect(session.project()?.tasks[0].assigned).toBeNull();
     expect(files.write).toHaveBeenCalled();
   });
 
-  it('saveTask updates fields and closed when moved to last status', async () => {
+  it('saveTask updates title and body and preserves points/assigned/status', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
     await session.newProject();
-    await session.createTask({ title: 'Work', status: 'Todo' });
+    await session.createTask({ title: 'Work', description: 'old', status: 'Todo' });
     const id = session.project()!.tasks[0].id;
 
     const result = await session.saveTask(id, {
       title: 'Work',
       description: 'done',
-      points: null,
-      assigned: null,
-      status: 'Done',
     });
     expect(result.ok).toBe(true);
     const task = session.project()!.tasks[0];
-    expect(task.status).toBe('Done');
-    expect(task.closed).not.toBeNull();
+    expect(task.status).toBe('Todo');
     expect(task.description).toBe('done');
+    expect(task.closed).toBeNull();
   });
 
   it('deleteTask removes the task and auto-saves', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
     await session.newProject();
     await session.createTask({ title: 'Gone', status: 'Todo' });
     const id = session.project()!.tasks[0].id;
@@ -253,7 +347,11 @@ describe('ProjectSessionService', () => {
 
   it('moveTask changes status and auto-saves', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
     await session.newProject();
     await session.createTask({ title: 'Move me', status: 'Todo' });
     const id = session.project()!.tasks[0].id;
@@ -266,7 +364,11 @@ describe('ProjectSessionService', () => {
 
   it('setProjectName renames and auto-saves', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
     await session.newProject();
 
     const result = await session.setProjectName('  My Board  ');
@@ -276,7 +378,11 @@ describe('ProjectSessionService', () => {
 
   it('addStatus / renameStatus / reorderStatuses / deleteStatus', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
     await session.newProject();
 
     expect((await session.addStatus('Review')).ok).toBe(true);
@@ -297,7 +403,11 @@ describe('ProjectSessionService', () => {
 
   it('deleteStatus fails when column has tasks', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
     await session.newProject();
     await session.createTask({ title: 'Blocker', status: 'Todo' });
     const result = await session.deleteStatus('Todo');
@@ -306,15 +416,21 @@ describe('ProjectSessionService', () => {
 
   it('reloadFromDisk replaces memory with validated disk content', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
     await session.newProject();
     await session.setProjectName('OnlyInMemory');
 
     const disk = createEmptyProject();
     disk.name = 'FromDisk';
     files.readHandle.mockResolvedValue({
+      handle,
       text: JSON.stringify(disk),
       fileName: 'x.tw.json',
+      lastModified: 2,
     });
 
     const result = await session.reloadFromDisk();
@@ -325,13 +441,19 @@ describe('ProjectSessionService', () => {
 
   it('reloadFromDisk keeps memory when disk JSON is invalid', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
     await session.newProject();
     await session.setProjectName('KeepMe');
 
     files.readHandle.mockResolvedValue({
+      handle,
       text: '{ not json',
       fileName: 'x.tw.json',
+      lastModified: 2,
     });
 
     const result = await session.reloadFromDisk();
@@ -340,115 +462,11 @@ describe('ProjectSessionService', () => {
     expect(session.uiError()).toContain(INVALID_FILE_MESSAGE);
   });
 
-  it('reloadFromDisk always takes disk even when browser cache differs', async () => {
-    const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
-    await session.newProject();
-    const projectId = session.project()!.id;
-    await session.setProjectName('BrowserAhead');
-
-    const disk = createEmptyProject();
-    disk.id = projectId;
-    disk.name = 'FromDiskWins';
-    cache.get.mockResolvedValue({
-      id: projectId,
-      project: { ...session.project()! },
-      fileName: 'x.tw.json',
-      cachedAt: new Date().toISOString(),
-    });
-    files.readHandle.mockResolvedValue({
-      text: JSON.stringify(disk),
-      fileName: 'x.tw.json',
-    });
-
-    const result = await session.reloadFromDisk();
-    expect(result.ok).toBe(true);
-    expect(session.project()?.name).toBe('FromDiskWins');
-    expect(session.cacheConflict()).toBeNull();
-  });
-
-  it('updateProject writes browser cache when a file is attached', async () => {
-    const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
-    files.pickLocationAndWrite.mockResolvedValue({ handle, fileName: 'x.tw.json' });
-    await session.newProject();
-    cache.put.mockClear();
-
-    await session.updateProject((p) => ({ ...p, name: 'Cached' }));
-    expect(cache.put).toHaveBeenCalled();
-    const putArg = cache.put.mock.calls.at(-1)?.[0] as { name: string };
-    expect(putArg.name).toBe('Cached');
-  });
-
-  it('openProject surfaces conflict when cache disagrees with disk', async () => {
-    const disk = createEmptyProject();
-    disk.name = 'Disk';
-    const cached = { ...createEmptyProject(), id: disk.id, name: 'Browser' };
-    cache.get.mockResolvedValue({
-      id: disk.id,
-      project: cached,
-      fileName: 'demo.tw.json',
-      cachedAt: new Date().toISOString(),
-    });
-    files.pickAndRead.mockResolvedValue({
-      handle: { name: 'demo.tw.json' } as FileSystemFileHandle,
-      text: JSON.stringify(disk),
-      fileName: 'demo.tw.json',
-    });
-
-    const result = await session.openProject();
-    expect(result.ok).toBe(false);
-    expect(session.cacheConflict()).toBeTruthy();
-    expect(session.hasFile()).toBe(false);
-
-    const useDisk = await session.resolveConflictUseDisk();
-    expect(useDisk.ok).toBe(true);
-    expect(session.project()?.name).toBe('Disk');
-    expect(session.cacheConflict()).toBeNull();
-  });
-
-  it('bootstrap does not auto-open; only prepares last-project hint', async () => {
-    const project = createEmptyProject();
-    project.name = 'FromCache';
-    cache.getLastProjectId.mockReturnValue(project.id);
-    cache.get.mockResolvedValue({
-      id: project.id,
-      project,
-      fileName: 'from-cache.tw.json',
-      cachedAt: new Date().toISOString(),
-    });
-
+  it('bootstrap does not auto-open a workspace', async () => {
     await session.bootstrap();
     expect(session.hasWorkspace()).toBe(false);
     expect(session.hasFile()).toBe(false);
-    expect(session.lastProject()?.name).toBe('FromCache');
-  });
-
-  it('newBrowserOnlyProject opens a workspace without a file handle', async () => {
-    const result = await session.newBrowserOnlyProject();
-    expect(result.ok).toBe(true);
-    expect(session.hasFile()).toBe(false);
-    expect(session.cacheOnly()).toBe(true);
-    expect(session.hasWorkspace()).toBe(true);
-    expect(session.project()?.name).toBe('Untitled Project');
-    expect(cache.put).toHaveBeenCalled();
-  });
-
-  it('openLastProject loads from cache when no file handle', async () => {
-    const project = createEmptyProject();
-    project.name = 'FromCache';
-    cache.getLastProjectId.mockReturnValue(project.id);
-    cache.get.mockResolvedValue({
-      id: project.id,
-      project,
-      fileName: 'from-cache.tw.json',
-      cachedAt: new Date().toISOString(),
-    });
-
-    await session.bootstrap();
-    const result = await session.openLastProject();
-    expect(result.ok).toBe(true);
-    expect(session.project()?.name).toBe('FromCache');
-    expect(session.hasWorkspace()).toBe(true);
-    expect(session.cacheOnly()).toBe(true);
+    expect(session.project()).toBeNull();
+    expect(recents.refresh).toHaveBeenCalled();
   });
 });

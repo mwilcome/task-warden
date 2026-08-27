@@ -3,7 +3,7 @@
 }
 
 <div class="board" role="list" aria-label="Project board">
-  @for (column of columns(); track trackStatus($index, column)) {
+  @for (column of columns(); track column.status) {
     <section
       class="board-column"
       [attr.data-board-status]="column.status"
@@ -90,7 +90,7 @@
         @if (column.tasks.length === 0) {
           <p class="board-column__empty muted flush">No tasks</p>
         }
-        @for (task of column.tasks; track trackTask($index, task)) {
+        @for (task of column.tasks; track task.id) {
           <article
             class="task-card"
             [class.task-card--dragging]="draggingTaskId() === task.id"
@@ -100,11 +100,6 @@
             (keydown)="onCardKeydown($event, task)"
           >
             <span class="task-card__title">{{ task.title }}</span>
-            @if (task.points !== null) {
-              <span class="task-card__points badge" [attr.aria-label]="task.points + ' points'">
-                {{ task.points }}
-              </span>
-            }
           </article>
         }
       </div>

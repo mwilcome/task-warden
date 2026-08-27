@@ -1,27 +1,22 @@
-import {
-  Component,
-  ElementRef,
-  HostListener,
-  effect,
-  inject,
-  signal,
-  viewChild,
-} from '@angular/core';
+import { Component, ElementRef, effect, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { BoardComponent } from '../board/board.component';
 import { downloadProjectFileGuide } from '../core/project/project-file-guide';
-import { INVALID_FILE_MESSAGE } from '../core/project/project.types';
 import { ProjectSessionService } from '../core/project/project-session.service';
 import { BrandMarkComponent } from './brand-mark.component';
 
 /**
- * Board shell: always on-page board, open-file overlay, header Projects menu.
+ * Board shell: create-or-open until a project exists, then the board.
  * Styles: global classes only (src/styles.scss).
  */
 @Component({
   selector: 'app-home',
   imports: [BoardComponent, FormsModule, BrandMarkComponent],
   templateUrl: './home.component.html',
+  host: {
+    '(document:click)': 'onDocumentClick($event)',
+    '(document:keydown.escape)': 'onEscape()',
+  },
 })
 export class HomeComponent {
   protected readonly session = inject(ProjectSessionService);
@@ -33,11 +28,12 @@ export class HomeComponent {
 
   private readonly nameInput = viewChild<ElementRef<HTMLInputElement>>('nameInput');
   private readonly projectsMenuRoot = viewChild<ElementRef<HTMLElement>>('projectsMenu');
+  private readonly uploadInput = viewChild<ElementRef<HTMLInputElement>>('uploadInput');
 
   constructor() {
     effect(() => {
       const project = this.session.project();
-      if (!this.editingName()) {
+      if (project && !this.editingName()) {
         this.nameDraft.set(project.name);
       }
     });
@@ -53,12 +49,6 @@ export class HomeComponent {
     });
   }
 
-  protected get isInvalidFileError(): boolean {
-    const err = this.session.uiError();
-    return !!err && err.startsWith(INVALID_FILE_MESSAGE);
-  }
-
-  @HostListener('document:click', ['$event'])
   onDocumentClick(event: MouseEvent): void {
     if (!this.projectsMenuOpen()) {
       return;
@@ -69,7 +59,6 @@ export class HomeComponent {
     }
   }
 
-  @HostListener('document:keydown.escape')
   onEscape(): void {
     if (this.projectsMenuOpen()) {
       this.projectsMenuOpen.set(false);
@@ -86,14 +75,23 @@ export class HomeComponent {
     await this.session.newProject();
   }
 
-  async onNewBrowserOnlyProject(): Promise<void> {
-    this.projectsMenuOpen.set(false);
-    await this.session.newBrowserOnlyProject();
-  }
-
   async onOpenProject(): Promise<void> {
     this.projectsMenuOpen.set(false);
-    await this.session.openProject();
+    if (this.session.fileSystemSupported) {
+      await this.session.openProject();
+      return;
+    }
+    this.uploadInput()?.nativeElement.click();
+  }
+
+  async onUploadSelected(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) {
+      return;
+    }
+    await this.session.openUploadedFile(file);
   }
 
   async onOpenRecent(projectId: string): Promise<void> {
@@ -101,6 +99,9 @@ export class HomeComponent {
     await this.session.openRecent(projectId);
   }
 
+  /**
+   * Intentionally unbound in the template. Do not wire Last-opened restore.
+   */
   async onOpenLastProject(): Promise<void> {
     this.projectsMenuOpen.set(false);
     await this.session.openLastProject();
@@ -109,6 +110,10 @@ export class HomeComponent {
   onDownloadProjectFileGuide(): void {
     this.projectsMenuOpen.set(false);
     downloadProjectFileGuide();
+  }
+
+  onDownloadProject(): void {
+    this.session.downloadProject();
   }
 
   onCloseProject(): void {
@@ -139,20 +144,19 @@ export class HomeComponent {
     await this.session.openFileForFailedRecent();
   }
 
-  async onConflictUseDisk(): Promise<void> {
-    await this.session.resolveConflictUseDisk();
+  async onDirtyReload(): Promise<void> {
+    await this.session.resolveDirtyReload();
   }
 
-  async onConflictUseCache(): Promise<void> {
-    await this.session.resolveConflictUseCache();
-  }
-
-  onConflictCancel(): void {
-    this.session.dismissConflict();
+  async onDirtyOverwrite(): Promise<void> {
+    await this.session.resolveDirtyOverwrite();
   }
 
   onStartEditName(): void {
     const project = this.session.project();
+    if (!project) {
+      return;
+    }
     this.nameDraft.set(project.name);
     this.nameError.set(null);
     this.editingName.set(true);
@@ -175,7 +179,7 @@ export class HomeComponent {
   }
 
   private cancelNameEdit(): void {
-    this.nameDraft.set(this.session.project().name);
+    this.nameDraft.set(this.session.project()?.name ?? '');
     this.nameError.set(null);
     this.editingName.set(false);
   }
