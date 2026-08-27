@@ -1299,13 +1299,48 @@ body.is-task-dragging {
 }
 
 @media (max-width: 40rem) {
+  .app-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: 0.5rem;
+  }
+
+  .app-header > .row:last-child {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+
+  .app-main--board {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .board-wrap {
+    width: max-content;
+    min-width: 0;
     padding-inline: var(--space-3);
   }
 
-  /* Center + min-width 100% squeezes columns into the viewport on iOS. */
   .board {
     justify-content: flex-start;
+    width: max-content;
+    min-width: 0;
+  }
+
+  .board-column {
+    flex: 0 0 85vw;
+    flex-shrink: 0;
+    width: 85vw;
+    min-width: 85vw;
+    max-width: none;
+  }
+
+  .board-column--add {
+    flex: 0 0 12rem;
+    flex-shrink: 0;
+    width: 12rem;
+    min-width: 12rem;
+    max-width: 12rem;
   }
 }
 
