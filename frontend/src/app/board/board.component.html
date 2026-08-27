@@ -88,7 +88,7 @@
 
       <div class="board-column__cards">
         @if (column.tasks.length === 0) {
-          <p class="board-column__empty muted flush">No tasks</p>
+          <p class="board-column__empty muted flush">No tasks yet</p>
         }
         @for (task of column.tasks; track trackTask($index, task)) {
           <article
