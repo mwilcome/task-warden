@@ -35,7 +35,6 @@ describe('project file format', () => {
         status: 'Todo',
       },
       opened.project.statuses,
-      opened.project.tasks,
     );
     expect(built.ok).toBe(true);
     if (!built.ok) {
@@ -50,7 +49,6 @@ describe('project file format', () => {
     }
     expect(roundTrip.project.tasks).toHaveLength(1);
     expect(roundTrip.project.tasks[0].title).toBe('Write the schema note');
-    expect(roundTrip.project.tasks[0].id).toBe('t1');
     expect(roundTrip.project.tasks[0].closed).toBeNull();
   });
 
@@ -59,7 +57,6 @@ describe('project file format', () => {
     const created = buildNewTask(
       { title: 'Polish release', status: 'In Progress' },
       project.statuses,
-      project.tasks,
       '2026-08-01T10:00:00.000Z',
     );
     expect(created.ok).toBe(true);
@@ -74,6 +71,8 @@ describe('project file format', () => {
       {
         title: 'Polish release',
         description: 'Ship MVP',
+        points: created.value.points,
+        assigned: created.value.assigned,
         status: 'Done',
       },
       project.statuses,

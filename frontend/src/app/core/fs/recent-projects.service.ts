@@ -73,12 +73,14 @@ export class RecentProjectsService {
   async recordBrowser(project: TwProject): Promise<void> {
     try {
       const db = await this.openDb();
+      const existing = await this.get(db, project.id);
       const record: RecentProjectRecord = {
         id: project.id,
         name: project.name,
         fileName: null,
         source: 'browser',
         openedAt: new Date().toISOString(),
+        handle: existing?.handle,
       };
       await this.put(db, record);
       await this.trim(db);

@@ -1,14 +1,17 @@
 import { createEmptyProject } from './create-empty-project';
 import { INVALID_FILE_MESSAGE, SCHEMA_VERSION, type TwProject } from './project.types';
+import { createUuidV4 } from './uuid';
 import { parseAndValidateProject, validateProject } from './validate-project';
 
 function validTask(overrides: Partial<TwProject['tasks'][number]> = {}) {
   const now = new Date().toISOString();
   return {
-    id: 't1',
+    id: createUuidV4(),
     title: 'Sample task',
     description: '',
+    points: null as number | null,
     status: 'Todo',
+    assigned: null as string | null,
     created: now,
     updated: now,
     closed: null as string | null,
@@ -33,8 +36,8 @@ describe('validateProject', () => {
     const result = validateProject(
       projectWithTasks([
         validTask(),
-        validTask({ id: 't2', status: 'In Progress' }),
-        validTask({ id: 't3', status: 'Done', closed: new Date().toISOString() }),
+        validTask({ status: 'In Progress', points: 3 }),
+        validTask({ status: 'Done', closed: new Date().toISOString(), points: 0 }),
       ]),
     );
     expect(result.ok).toBe(true);
@@ -70,62 +73,22 @@ describe('validateProject', () => {
     }
   });
 
-  it('rejects empty project id', () => {
-    const project = { ...createEmptyProject(), id: '' };
+  it('rejects invalid project UUID', () => {
+    const project = { ...createEmptyProject(), id: 'not-a-uuid' };
     const result = validateProject(project);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toMatch(/id/i);
+      expect(result.reason).toMatch(/UUID/i);
     }
   });
 
-  it('rejects empty task id', () => {
-    const project = projectWithTasks([validTask({ id: '' })]);
+  it('rejects invalid task UUID', () => {
+    const project = projectWithTasks([validTask({ id: 'bad-id' })]);
     const result = validateProject(project);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toMatch(/id/i);
+      expect(result.reason).toMatch(/UUID/i);
     }
-  });
-
-  it('accepts legacy UUID ids', () => {
-    const project = {
-      ...createEmptyProject(),
-      id: 'a1b2c3d4-e5f6-4789-a012-3456789abcde',
-      tasks: [validTask({ id: 'b2c3d4e5-f6a7-4890-b123-456789abcdef' })],
-    };
-    expect(validateProject(project).ok).toBe(true);
-  });
-
-  it('ignores extra keys including unused owner/points/assigned', () => {
-    const raw = {
-      ...createEmptyProject(),
-      owner: null,
-      startDate: null,
-      endDate: null,
-      extra: 'nope',
-      tasks: [
-        {
-          ...validTask(),
-          points: 3,
-          assigned: 'me',
-          leftover: true,
-        },
-      ],
-    };
-    const result = validateProject(raw);
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
-    expect('owner' in result.project).toBe(false);
-    expect('startDate' in result.project).toBe(false);
-    expect('endDate' in result.project).toBe(false);
-    expect('extra' in result.project).toBe(false);
-    expect('points' in result.project.tasks[0]).toBe(false);
-    expect('assigned' in result.project.tasks[0]).toBe(false);
-    expect('leftover' in result.project.tasks[0]).toBe(false);
-    expect(result.project.tasks[0].title).toBe('Sample task');
   });
 
   it('rejects empty statuses', () => {
@@ -156,7 +119,31 @@ describe('validateProject', () => {
     }
   });
 
-  it('accepts a custom aiInstructions string', () => {
+  it('rejects negative points', () => {
+    const project = projectWithTasks([validTask({ points: -1 })]);
+    const result = validateProject(project);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toMatch(/points/i);
+    }
+  });
+
+  it('rejects non-integer points', () => {
+    const project = projectWithTasks([validTask({ points: 1.5 })]);
+    const result = validateProject(project);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toMatch(/points/i);
+    }
+  });
+
+  it('accepts points null and integer ≥ 0', () => {
+    expect(validateProject(projectWithTasks([validTask({ points: null })])).ok).toBe(true);
+    expect(validateProject(projectWithTasks([validTask({ points: 0 })])).ok).toBe(true);
+    expect(validateProject(projectWithTasks([validTask({ points: 99 })])).ok).toBe(true);
+  });
+
+  it('does not require aiInstructions to match the locked template (AI may edit)', () => {
     const project = {
       ...createEmptyProject(),
       aiInstructions: 'Custom AI notes',

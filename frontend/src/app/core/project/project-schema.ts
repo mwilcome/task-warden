@@ -29,16 +29,21 @@ This file explains the Task Warden project format.
 \`\`\`json
 {
   "version": "${SCHEMA_VERSION}",
-  "id": "k7xm2p9q",
+  "id": "uuid-v4",
   "name": "string",
+  "owner": null,
+  "startDate": null,
+  "endDate": null,
   "statuses": ["Todo", "In Progress", "Done"],
   "aiInstructions": "string",
   "tasks": [
     {
-      "id": "t1",
+      "id": "uuid-v4",
       "title": "string (required, non-empty)",
       "description": "string",
+      "points": null,
       "status": "must be one of statuses",
+      "assigned": null,
       "created": "ISO-8601 UTC",
       "updated": "ISO-8601 UTC",
       "closed": "ISO-8601 UTC or null"
@@ -47,13 +52,15 @@ This file explains the Task Warden project format.
 }
 \`\`\`
 
+Unused keys (\`owner\`, \`startDate\`, \`endDate\`, and on tasks \`points\`, \`assigned\`) stay in the file as \`null\`. Leave them unchanged.
+
 ---
 
 ## Rules when editing
 
 1. Keep **valid JSON**. Do not invent new top-level fields.
 2. \`version\` must be exactly \`${SCHEMA_VERSION}\`.
-3. Project \`id\` is 8 lowercase characters. Task ids are \`t1\`, \`t2\`, … Copy an existing id pattern; do not invent UUIDs.
+3. Every \`id\` (project and tasks) must be a **UUID v4**. Generate a new one for every new task.
 4. \`statuses\` is an ordered list of column names. The **last** status is the done column (do not hard-code the word "Done").
 5. Each task \`status\` must match one entry in \`statuses\`.
 6. On every task change, set \`updated\` to the current time in ISO-8601 UTC.
@@ -80,16 +87,21 @@ Follow that field on the specific file you are editing if it differs.
 \`\`\`json
 {
   "version": "${SCHEMA_VERSION}",
-  "id": "k7xm2p9q",
+  "id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
   "name": "Sample Project",
+  "owner": null,
+  "startDate": null,
+  "endDate": null,
   "statuses": ["Todo", "In Progress", "Done"],
   "aiInstructions": "(see aiInstructions on a real project file)",
   "tasks": [
     {
-      "id": "t1",
+      "id": "b2c3d4e5-f6a7-4890-b123-456789abcdef",
       "title": "Example task",
       "description": "",
+      "points": null,
       "status": "Todo",
+      "assigned": null,
       "created": "2026-08-10T18:00:00.000Z",
       "updated": "2026-08-10T18:00:00.000Z",
       "closed": null
@@ -110,7 +122,6 @@ Follow that field on the specific file you are editing if it differs.
 
 /**
  * Trigger a browser download of the project file schema.
- * Works without File System Access (any browser that supports Blob downloads).
  */
 export function downloadProjectSchema(): void {
   const content = buildProjectSchema();

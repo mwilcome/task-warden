@@ -166,49 +166,18 @@ describe('ProjectSessionService', () => {
       openedAt: '2026-08-01T00:00:00.000Z',
     });
     recents.getHandle.mockResolvedValue(null);
-    cache.get.mockResolvedValue(project);
+    cache.get.mockResolvedValue({
+      id: project.id,
+      project,
+      fileName: null,
+      cachedAt: '2026-08-01T00:00:00.000Z',
+    });
 
     const result = await session.openRecent(project.id);
     expect(result.ok).toBe(true);
     expect(session.savedInBrowser()).toBe(true);
     expect(session.project()?.id).toBe(project.id);
     expect(files.readHandle).not.toHaveBeenCalled();
-  });
-
-  it('openRecent ignores extra keys on an old cache row', async () => {
-    const project = {
-      ...createEmptyProject(),
-      owner: null,
-      tasks: [
-        {
-          id: 'b2c3d4e5-f6a7-4890-b123-456789abcdef',
-          title: 'Legacy',
-          description: '',
-          points: 3,
-          status: 'Todo',
-          assigned: null,
-          created: '2026-08-01T00:00:00.000Z',
-          updated: '2026-08-01T00:00:00.000Z',
-          closed: null,
-        },
-      ],
-    };
-    recents.getMeta.mockResolvedValue({
-      id: project.id,
-      name: project.name,
-      fileName: null,
-      source: 'browser',
-      openedAt: '2026-08-01T00:00:00.000Z',
-    });
-    recents.getHandle.mockResolvedValue(null);
-    cache.get.mockResolvedValue(project);
-
-    const result = await session.openRecent(project.id);
-    expect(result.ok).toBe(true);
-    expect(session.project()?.tasks[0].title).toBe('Legacy');
-    expect(session.project()?.tasks[0].id).toBe('b2c3d4e5-f6a7-4890-b123-456789abcdef');
-    expect(session.project() && 'owner' in session.project()!).toBe(false);
-    expect(session.project() && 'points' in session.project()!.tasks[0]).toBe(false);
   });
 
   it('openRecent does not open a missing disk file from cache', async () => {
@@ -221,7 +190,12 @@ describe('ProjectSessionService', () => {
       openedAt: '2026-08-01T00:00:00.000Z',
     });
     recents.getHandle.mockResolvedValue(null);
-    cache.get.mockResolvedValue(project);
+    cache.get.mockResolvedValue({
+      id: project.id,
+      project,
+      fileName: 'gone.tw.json',
+      cachedAt: '2026-08-01T00:00:00.000Z',
+    });
 
     const result = await session.openRecent(project.id);
     expect(result.ok).toBe(false);
@@ -419,7 +393,8 @@ describe('ProjectSessionService', () => {
     expect(result.ok).toBe(true);
     expect(session.project()?.tasks).toHaveLength(1);
     expect(session.project()?.tasks[0].title).toBe('First');
-    expect(session.project()?.tasks[0].id).toBe('t1');
+    expect(session.project()?.tasks[0].points).toBeNull();
+    expect(session.project()?.tasks[0].assigned).toBeNull();
     expect(files.write).toHaveBeenCalled();
   });
 

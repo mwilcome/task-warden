@@ -7,18 +7,19 @@ describe('project file schema', () => {
     expect(PROJECT_FILE_SCHEMA_FILENAME.endsWith('.md')).toBe(true);
   });
 
-  it('includes schema version, short ids, core rules, and embedded instructions', () => {
+  it('includes schema version, unused keys as null, core rules, and embedded instructions', () => {
     const schema = buildProjectSchema();
     expect(schema).toContain(SCHEMA_VERSION);
     expect(schema).toContain('.tw.json');
-    expect(schema).toContain('k7xm2p9q');
-    expect(schema).toContain('t1');
-    expect(schema).toContain('Copy an existing id pattern');
-    expect(schema).not.toContain('"owner"');
-    expect(schema).not.toContain('"points"');
-    expect(schema).not.toContain('"assigned"');
+    expect(schema).toContain('UUID v4');
+    expect(schema).toContain('"owner": null');
+    expect(schema).toContain('"startDate": null');
+    expect(schema).toContain('"endDate": null');
+    expect(schema).toContain('"points": null');
+    expect(schema).toContain('"assigned": null');
     expect(schema).toContain('last');
     expect(schema).toContain('closed');
     expect(schema).toContain(AI_INSTRUCTIONS);
+    expect(schema).toContain('Leave them unchanged');
   });
 });

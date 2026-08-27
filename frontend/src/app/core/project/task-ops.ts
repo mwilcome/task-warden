@@ -1,5 +1,5 @@
 import type { TwProject, TwTask } from './project.types';
-import { nextTaskId } from './ids';
+import { createUuidV4 } from './uuid';
 
 /** ISO-8601 UTC timestamp now. */
 export function utcNowIso(): string {
@@ -33,12 +33,16 @@ export function closedForStatus(
 export interface CreateTaskInput {
   title: string;
   description?: string;
+  points?: number | null;
+  assigned?: string | null;
   status: string;
 }
 
 export interface UpdateTaskInput {
   title: string;
   description: string;
+  points: number | null;
+  assigned: string | null;
   status: string;
 }
 
@@ -50,11 +54,20 @@ function normalizeTitle(title: string): string {
   return title.trim();
 }
 
-/** Build a new task for a column status. Id is tN after the highest tN in existingTasks. */
+function normalizePoints(points: number | null | undefined): TaskOpResult<number | null> {
+  if (points === null || points === undefined || (typeof points === 'number' && Number.isNaN(points))) {
+    return { ok: true, value: null };
+  }
+  if (typeof points !== 'number' || !Number.isInteger(points) || points < 0) {
+    return { ok: false, reason: 'Points must be an integer ≥ 0 or empty.' };
+  }
+  return { ok: true, value: points };
+}
+
+/** Build a new task for a column status. */
 export function buildNewTask(
   input: CreateTaskInput,
   statuses: string[],
-  existingTasks: readonly TwTask[] = [],
   now: string = utcNowIso(),
 ): TaskOpResult<TwTask> {
   const title = normalizeTitle(input.title);
@@ -64,12 +77,18 @@ export function buildNewTask(
   if (!statuses.includes(input.status)) {
     return { ok: false, reason: 'Status is not in the project statuses list.' };
   }
+  const pointsResult = normalizePoints(input.points ?? null);
+  if (!pointsResult.ok) {
+    return pointsResult;
+  }
 
   const task: TwTask = {
-    id: nextTaskId(existingTasks),
+    id: createUuidV4(),
     title,
     description: input.description ?? '',
+    points: pointsResult.value,
     status: input.status,
+    assigned: input.assigned?.trim() ? input.assigned.trim() : null,
     created: now,
     updated: now,
     closed: closedForStatus(statuses, input.status, now),
@@ -91,12 +110,18 @@ export function applyTaskUpdate(
   if (!statuses.includes(input.status)) {
     return { ok: false, reason: 'Status is not in the project statuses list.' };
   }
+  const pointsResult = normalizePoints(input.points);
+  if (!pointsResult.ok) {
+    return pointsResult;
+  }
 
   const task: TwTask = {
     ...existing,
     title,
     description: input.description ?? '',
+    points: pointsResult.value,
     status: input.status,
+    assigned: input.assigned?.trim() ? input.assigned.trim() : null,
     updated: now,
     closed: closedForStatus(statuses, input.status, now),
   };
@@ -153,6 +178,8 @@ export function moveTaskToStatus(
     {
       title: existing.title,
       description: existing.description,
+      points: existing.points,
+      assigned: existing.assigned,
       status: newStatus,
     },
     project.statuses,

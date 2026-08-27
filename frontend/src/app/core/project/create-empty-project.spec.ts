@@ -5,6 +5,7 @@ import {
   DEFAULT_STATUSES,
   SCHEMA_VERSION,
 } from './project.types';
+import { isUuidV4 } from './uuid';
 import { validateProject } from './validate-project';
 
 describe('createEmptyProject', () => {
@@ -14,14 +15,17 @@ describe('createEmptyProject', () => {
     expect(project.version).toBe('1.0.0');
   });
 
-  it('generates an 8-character lowercase project id', () => {
+  it('generates a UUID v4 project id', () => {
     const project = createEmptyProject();
-    expect(project.id).toMatch(/^[a-z0-9]{8}$/);
+    expect(isUuidV4(project.id)).toBe(true);
   });
 
-  it('uses default name and empty tasks', () => {
+  it('uses default name, null dates/owner, empty tasks', () => {
     const project = createEmptyProject();
     expect(project.name).toBe(DEFAULT_PROJECT_NAME);
+    expect(project.owner).toBeNull();
+    expect(project.startDate).toBeNull();
+    expect(project.endDate).toBeNull();
     expect(project.tasks).toEqual([]);
   });
 

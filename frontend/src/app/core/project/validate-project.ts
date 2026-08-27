@@ -5,7 +5,7 @@ import {
   type TwProject,
   type TwTask,
 } from './project.types';
-import { isNonEmptyId } from './ids';
+import { isUuidV4 } from './uuid';
 
 function fail(reason: string): ProjectValidationResult {
   return {
@@ -25,14 +25,25 @@ function isNullableString(value: unknown): value is string | null {
 
 /**
  * Validates an unknown value as a TwProject.
- * Extra keys are ignored. Missing or invalid required fields are rejected.
+ * Fail closed — no sanitizing.
  */
 export function validateProject(value: unknown): ProjectValidationResult {
   if (!isPlainObject(value)) {
     return fail('Root value must be a JSON object.');
   }
 
-  const requiredKeys = ['version', 'id', 'name', 'statuses', 'aiInstructions', 'tasks'] as const;
+  // Required top-level fields present
+  const requiredKeys = [
+    'version',
+    'id',
+    'name',
+    'owner',
+    'startDate',
+    'endDate',
+    'statuses',
+    'aiInstructions',
+    'tasks',
+  ] as const;
 
   for (const key of requiredKeys) {
     if (!(key in value)) {
@@ -40,16 +51,29 @@ export function validateProject(value: unknown): ProjectValidationResult {
     }
   }
 
+  // version must be exactly 1.0.0
   if (value['version'] !== SCHEMA_VERSION) {
     return fail(`Unsupported version (expected "${SCHEMA_VERSION}").`);
   }
 
-  if (!isNonEmptyId(value['id'])) {
-    return fail('Project id must be a non-empty string.');
+  if (!isUuidV4(value['id'])) {
+    return fail('Project id must be a valid UUID v4.');
   }
 
   if (typeof value['name'] !== 'string') {
     return fail('name must be a string.');
+  }
+
+  if (!isNullableString(value['owner'])) {
+    return fail('owner must be a string or null.');
+  }
+
+  if (!isNullableString(value['startDate'])) {
+    return fail('startDate must be a string or null.');
+  }
+
+  if (!isNullableString(value['endDate'])) {
+    return fail('endDate must be a string or null.');
   }
 
   if (typeof value['aiInstructions'] !== 'string') {
@@ -86,6 +110,9 @@ export function validateProject(value: unknown): ProjectValidationResult {
     version: SCHEMA_VERSION,
     id: value['id'] as string,
     name: value['name'] as string,
+    owner: value['owner'] as string | null,
+    startDate: value['startDate'] as string | null,
+    endDate: value['endDate'] as string | null,
     statuses: [...(statuses as string[])],
     aiInstructions: value['aiInstructions'] as string,
     tasks: validatedTasks,
@@ -116,7 +143,17 @@ function validateTask(
     return taskFail(`${prefix} must be an object.`);
   }
 
-  const taskKeys = ['id', 'title', 'description', 'status', 'created', 'updated', 'closed'] as const;
+  const taskKeys = [
+    'id',
+    'title',
+    'description',
+    'points',
+    'status',
+    'assigned',
+    'created',
+    'updated',
+    'closed',
+  ] as const;
 
   for (const key of taskKeys) {
     if (!(key in value)) {
@@ -124,8 +161,8 @@ function validateTask(
     }
   }
 
-  if (!isNonEmptyId(value['id'])) {
-    return taskFail(`${prefix}.id must be a non-empty string.`);
+  if (!isUuidV4(value['id'])) {
+    return taskFail(`${prefix}.id must be a valid UUID v4.`);
   }
 
   if (typeof value['title'] !== 'string' || value['title'].trim() === '') {
@@ -136,11 +173,22 @@ function validateTask(
     return taskFail(`${prefix}.description must be a string.`);
   }
 
+  const points = value['points'];
+  if (points !== null) {
+    if (typeof points !== 'number' || !Number.isInteger(points) || points < 0) {
+      return taskFail(`${prefix}.points must be null or an integer ≥ 0.`);
+    }
+  }
+
   if (typeof value['status'] !== 'string') {
     return taskFail(`${prefix}.status must be a string.`);
   }
   if (!statusSet.has(value['status'])) {
     return taskFail(`${prefix}.status is not in statuses (orphan status).`);
+  }
+
+  if (!isNullableString(value['assigned'])) {
+    return taskFail(`${prefix}.assigned must be a string or null.`);
   }
 
   if (typeof value['created'] !== 'string') {
@@ -161,7 +209,9 @@ function validateTask(
       id: value['id'] as string,
       title: value['title'] as string,
       description: value['description'] as string,
+      points: points as number | null,
       status: value['status'] as string,
+      assigned: value['assigned'] as string | null,
       created: value['created'] as string,
       updated: value['updated'] as string,
       closed: value['closed'] as string | null,
@@ -171,7 +221,7 @@ function validateTask(
 
 /**
  * Parse a JSON string and validate as a TwProject.
- * Invalid JSON → Invalid Task Warden file.
+ * Invalid JSON → Invalid Task Warden file (fail closed).
  */
 export function parseAndValidateProject(jsonText: string): ProjectValidationResult {
   let parsed: unknown;

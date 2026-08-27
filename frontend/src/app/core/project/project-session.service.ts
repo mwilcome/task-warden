@@ -420,10 +420,11 @@ export class ProjectSessionService {
       {
         title: input.title,
         description: input.description,
+        points: null,
+        assigned: null,
         status: input.status,
       },
       current.statuses,
-      current.tasks,
     );
     if (!built.ok) {
       return { ok: false, message: built.reason };
@@ -445,6 +446,8 @@ export class ProjectSessionService {
       {
         title: input.title,
         description: input.description,
+        points: existing.points,
+        assigned: existing.assigned,
         status: existing.status,
       },
       current.statuses,
@@ -649,15 +652,15 @@ export class ProjectSessionService {
     return { ok: true };
   }
 
-  /** Load a project from the in-browser store. Same TwProject blob as a file. Caller manages busy. */
+  /** Load a project from the in-browser store. Caller manages busy. */
   private async openFromCache(projectId: string): Promise<SessionActionResult> {
     const cached = await this.cache.get(projectId);
-    if (!cached) {
+    if (!cached?.project) {
       const message = 'No browser copy of that project was found.';
       this.uiErrorSignal.set(message);
       return { ok: false, message };
     }
-    const validation = validateProject(cached);
+    const validation = validateProject(cached.project);
     if (!validation.ok) {
       const message = validation.reason
         ? `${validation.message}: ${validation.reason}`
@@ -665,7 +668,7 @@ export class ProjectSessionService {
       this.uiErrorSignal.set(message);
       return { ok: false, message };
     }
-    await this.activateBrowser(validation.project, null);
+    await this.activateBrowser(validation.project, cached.fileName);
     return { ok: true };
   }
 
@@ -681,7 +684,7 @@ export class ProjectSessionService {
   }
 
   private async persistBrowser(project: TwProject): Promise<void> {
-    await this.cache.put(project);
+    await this.cache.put(project, null);
     await this.recents.recordBrowser(project);
   }
 

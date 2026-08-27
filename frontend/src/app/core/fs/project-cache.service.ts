@@ -4,35 +4,64 @@ import type { TwProject } from '../project/project.types';
 const DB_NAME = 'task-warden-cache';
 const DB_VERSION = 1;
 const STORE = 'projects';
+const LAST_ID_KEY = 'task-warden:last-project-id';
 
-/** IndexedDB row. `project` is the same TwProject blob as a `.tw.json` file. */
-interface CacheRow {
+export interface CachedProjectRecord {
   id: string;
   project: TwProject;
+  fileName: string | null;
+  cachedAt: string;
 }
 
 /**
- * In-browser store for New browser project. IndexedDB holds the same
- * TwProject blob as a `.tw.json` file. Recents are metadata only.
+ * Local full-project JSON cache (IndexedDB) + last-project id (localStorage).
+ * Used for New browser project / saved in this browser. Disk `.tw.json` is
+ * the source of truth when a file handle is open. Last-id is not auto-restored.
  */
 @Injectable({ providedIn: 'root' })
 export class ProjectCacheService {
   private dbPromise: Promise<IDBDatabase> | null = null;
 
-  async put(project: TwProject): Promise<void> {
+  getLastProjectId(): string | null {
     try {
-      const db = await this.openDb();
-      await this.idbPut(db, { id: project.id, project });
+      return localStorage.getItem(LAST_ID_KEY);
     } catch {
-      /* IndexedDB may be unavailable */
+      return null;
     }
   }
 
-  async get(projectId: string): Promise<TwProject | null> {
+  setLastProjectId(projectId: string | null): void {
+    try {
+      if (!projectId) {
+        localStorage.removeItem(LAST_ID_KEY);
+      } else {
+        localStorage.setItem(LAST_ID_KEY, projectId);
+      }
+    } catch {
+      /* private mode / quota */
+    }
+  }
+
+  async put(project: TwProject, fileName: string | null): Promise<void> {
     try {
       const db = await this.openDb();
-      const row = await this.idbGet(db, projectId);
-      return row?.project ?? null;
+      const record: CachedProjectRecord = {
+        id: project.id,
+        project,
+        fileName,
+        cachedAt: new Date().toISOString(),
+      };
+      await this.idbPut(db, record);
+      this.setLastProjectId(project.id);
+    } catch {
+      /* cache is best-effort */
+    }
+  }
+
+  async get(projectId: string): Promise<CachedProjectRecord | null> {
+    try {
+      const db = await this.openDb();
+      return (await this.idbGet(db, projectId)) ?? null;
     } catch {
       return null;
     }
@@ -47,6 +76,9 @@ export class ProjectCacheService {
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       });
+      if (this.getLastProjectId() === projectId) {
+        this.setLastProjectId(null);
+      }
     } catch {
       /* ignore */
     }
@@ -70,16 +102,16 @@ export class ProjectCacheService {
     return this.dbPromise;
   }
 
-  private idbGet(db: IDBDatabase, id: string): Promise<CacheRow | undefined> {
+  private idbGet(db: IDBDatabase, id: string): Promise<CachedProjectRecord | undefined> {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).get(id);
-      req.onsuccess = () => resolve(req.result as CacheRow | undefined);
+      req.onsuccess = () => resolve(req.result as CachedProjectRecord | undefined);
       req.onerror = () => reject(req.error);
     });
   }
 
-  private idbPut(db: IDBDatabase, record: CacheRow): Promise<void> {
+  private idbPut(db: IDBDatabase, record: CachedProjectRecord): Promise<void> {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite');
       tx.objectStore(STORE).put(record);
