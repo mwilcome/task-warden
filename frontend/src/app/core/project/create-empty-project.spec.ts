@@ -5,7 +5,6 @@ import {
   DEFAULT_STATUSES,
   SCHEMA_VERSION,
 } from './project.types';
-import { isUuidV4 } from './uuid';
 import { validateProject } from './validate-project';
 
 describe('createEmptyProject', () => {
@@ -15,18 +14,18 @@ describe('createEmptyProject', () => {
     expect(project.version).toBe('1.0.0');
   });
 
-  it('generates a UUID v4 project id', () => {
+  it('generates an 8-character lowercase project id', () => {
     const project = createEmptyProject();
-    expect(isUuidV4(project.id)).toBe(true);
+    expect(project.id).toMatch(/^[a-z0-9]{8}$/);
   });
 
-  it('uses default name, null dates/owner, empty tasks', () => {
+  it('uses default name and empty tasks', () => {
     const project = createEmptyProject();
     expect(project.name).toBe(DEFAULT_PROJECT_NAME);
-    expect(project.owner).toBeNull();
-    expect(project.startDate).toBeNull();
-    expect(project.endDate).toBeNull();
     expect(project.tasks).toEqual([]);
+    expect('owner' in project).toBe(false);
+    expect('startDate' in project).toBe(false);
+    expect('endDate' in project).toBe(false);
   });
 
   it('uses default statuses (last status is done column)', () => {
@@ -38,6 +37,8 @@ describe('createEmptyProject', () => {
   it('embeds the locked aiInstructions string verbatim', () => {
     const project = createEmptyProject();
     expect(project.aiInstructions).toBe(AI_INSTRUCTIONS);
+    expect(project.aiInstructions).toContain('Copy an existing id pattern');
+    expect(project.aiInstructions).not.toContain('UUID v4');
   });
 
   it('always produces a valid, loadable project', () => {

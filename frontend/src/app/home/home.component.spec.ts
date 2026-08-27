@@ -16,11 +16,13 @@ function sessionStub(overrides: Record<string, unknown> = {}) {
     hasFile: signal(false).asReadonly(),
     hasWorkspace: hasWorkspace.asReadonly(),
     needsDownload: signal(false).asReadonly(),
+    savedInBrowser: signal(false).asReadonly(),
     fileSystemSupported: true,
     recentProjects: signal([]).asReadonly(),
     recentFailure: signal(null).asReadonly(),
     dirtyFile: signal(null).asReadonly(),
     newProject: vi.fn(),
+    newBrowserOnlyProject: vi.fn(),
     openProject: vi.fn(),
     openUploadedFile: vi.fn(),
     openRecent: vi.fn(),
@@ -53,12 +55,10 @@ describe('HomeComponent', () => {
     expect(el.querySelector('app-board')).toBeNull();
     expect(el.textContent).toContain('Create or open a project');
     expect(el.textContent).toContain('New project');
+    expect(el.textContent).toContain('New browser project');
     expect(el.textContent).toContain('Open project');
     expect(el.textContent).toContain('Download schema (.md)');
     expect(el.textContent?.toLowerCase()).not.toContain('last opened');
-    expect(el.textContent?.toLowerCase()).not.toContain('wizard');
-    expect(el.textContent?.toLowerCase()).not.toContain('browser only');
-    expect(el.textContent?.toLowerCase()).not.toContain('ai hub');
   });
 
   it('renders the board only after a workspace exists', async () => {
@@ -85,5 +85,33 @@ describe('HomeComponent', () => {
     expect(el.querySelector('app-board')).toBeTruthy();
     expect(el.textContent).toContain(project.name);
     expect(el.textContent).not.toContain('Create or open a project');
+  });
+
+  it('shows saved-in-this-browser copy and download without a disk file', async () => {
+    const project = createEmptyProject();
+    await TestBed.configureTestingModule({
+      imports: [HomeComponent],
+      providers: [
+        {
+          provide: ProjectSessionService,
+          useValue: sessionStub({
+            project: signal(project).asReadonly(),
+            hasWorkspace: signal(true).asReadonly(),
+            hasFile: signal(false).asReadonly(),
+            savedInBrowser: signal(true).asReadonly(),
+            needsDownload: signal(true).asReadonly(),
+          }),
+        },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(HomeComponent);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelector('app-board')).toBeTruthy();
+    expect(el.textContent).toContain('Saved in this browser');
+    expect(el.textContent).toContain('Download');
+    expect(el.textContent).not.toContain('Reload');
   });
 });

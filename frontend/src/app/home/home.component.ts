@@ -1,7 +1,7 @@
 import { Component, ElementRef, effect, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { BoardComponent } from '../board/board.component';
-import { downloadProjectFileGuide } from '../core/project/project-file-guide';
+import { downloadProjectSchema } from '../core/project/project-schema';
 import { ProjectSessionService } from '../core/project/project-session.service';
 import { BrandMarkComponent } from './brand-mark.component';
 
@@ -75,6 +75,11 @@ export class HomeComponent {
     await this.session.newProject();
   }
 
+  async onNewBrowserProject(): Promise<void> {
+    this.projectsMenuOpen.set(false);
+    await this.session.newBrowserOnlyProject();
+  }
+
   async onOpenProject(): Promise<void> {
     this.projectsMenuOpen.set(false);
     if (this.session.fileSystemSupported) {
@@ -99,9 +104,9 @@ export class HomeComponent {
     await this.session.openRecent(projectId);
   }
 
-  onDownloadProjectFileGuide(): void {
+  onDownloadProjectSchema(): void {
     this.projectsMenuOpen.set(false);
-    downloadProjectFileGuide();
+    downloadProjectSchema();
   }
 
   onDownloadProject(): void {

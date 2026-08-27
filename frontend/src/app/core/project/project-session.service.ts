@@ -5,6 +5,7 @@ import {
   UserCancelledFilePickerError,
 } from '../fs/project-file.repository';
 import { RecentProjectsService } from '../fs/recent-projects.service';
+import { ProjectCacheService } from '../fs/project-cache.service';
 import { createEmptyProject } from './create-empty-project';
 import { INVALID_FILE_MESSAGE, type TwProject } from './project.types';
 import {
@@ -23,7 +24,7 @@ import {
   renameProject,
   replaceTask,
 } from './task-ops';
-import { parseAndValidateProject } from './validate-project';
+import { parseAndValidateProject, validateProject } from './validate-project';
 
 /** Exact auto-save failure copy. */
 export const SAVE_FAILED_MESSAGE =
@@ -55,13 +56,14 @@ export type TaskPanelFields = {
 /**
  * Application service: open project session for the current browser tab.
  * Chrome/Edge: disk `.tw.json` via File System Access (auto-save).
- * Safari: in-memory after upload or create; persist with download only.
- * No IndexedDB project store.
+ * New browser project: IndexedDB in-browser store (multiple projects, no file).
+ * Upload/download still exports a `.tw.json` for agents.
  */
 @Injectable({ providedIn: 'root' })
 export class ProjectSessionService {
   private readonly files = inject(ProjectFileRepository);
   private readonly recents = inject(RecentProjectsService);
+  private readonly cache = inject(ProjectCacheService);
 
   private readonly projectSignal = signal<TwProject | null>(null);
   private readonly fileNameSignal = signal<string | null>(null);
@@ -82,10 +84,12 @@ export class ProjectSessionService {
   readonly busy = this.busySignal.asReadonly();
   readonly hasFile = computed(() => this.fileHandleSignal() !== null);
   readonly hasWorkspace = computed(() => this.projectSignal() !== null);
-  /** Safari/memory session: persist by downloading the file. */
-  readonly needsDownload = computed(
+  /** True when the open project is saved in this browser (no disk handle). */
+  readonly savedInBrowser = computed(
     () => this.projectSignal() !== null && this.fileHandleSignal() === null,
   );
+  /** Browser-saved or upload session: persist a `.tw.json` download for agents. */
+  readonly needsDownload = computed(() => this.savedInBrowser());
   readonly fileSystemSupported = this.files.isSupported();
   readonly recentProjects = this.recents.list;
   readonly recentFailure = this.recentFailureSignal.asReadonly();
@@ -104,21 +108,15 @@ export class ProjectSessionService {
 
   /**
    * New Project: Chrome writes `.tw.json` and keeps the handle.
-   * Safari: empty project in memory only — download to save. Cancelled picker opens nothing.
+   * Without File System Access: New browser project (saved in this browser).
+   * Cancelled picker opens nothing.
    */
   async newProject(): Promise<SessionActionResult> {
     this.uiErrorSignal.set(null);
     this.dirtyFileSignal.set(null);
 
     if (!this.files.isSupported()) {
-      this.busySignal.set(true);
-      try {
-        const project = createEmptyProject();
-        this.activateMemory(project, `${this.slugFileName(project.name)}.tw.json`);
-        return { ok: true };
-      } finally {
-        this.busySignal.set(false);
-      }
+      return this.newBrowserOnlyProject();
     }
 
     this.busySignal.set(true);
@@ -135,6 +133,27 @@ export class ProjectSessionService {
       if (error instanceof UserCancelledFilePickerError) {
         return { ok: false, message: error.message, cancelled: true };
       }
+      const message = this.messageFrom(error);
+      this.uiErrorSignal.set(message);
+      return { ok: false, message };
+    } finally {
+      this.busySignal.set(false);
+    }
+  }
+
+  /**
+   * New browser project: saved in this browser (IndexedDB). No disk file.
+   */
+  async newBrowserOnlyProject(): Promise<SessionActionResult> {
+    this.uiErrorSignal.set(null);
+    this.dirtyFileSignal.set(null);
+    this.recentFailureSignal.set(null);
+    this.busySignal.set(true);
+    try {
+      const project = createEmptyProject();
+      await this.activateBrowser(project, null);
+      return { ok: true };
+    } catch (error) {
       const message = this.messageFrom(error);
       this.uiErrorSignal.set(message);
       return { ok: false, message };
@@ -207,7 +226,8 @@ export class ProjectSessionService {
   }
 
   /**
-   * Open a recent disk path (Chrome File System Access handle).
+   * Open a recent: browser-saved from cache, or a disk path (File System Access).
+   * Missing disk files are not opened from cache.
    */
   async openRecent(projectId: string): Promise<SessionActionResult> {
     this.uiErrorSignal.set(null);
@@ -216,6 +236,26 @@ export class ProjectSessionService {
 
     const meta = await this.recents.getMeta(projectId);
     const handle = await this.recents.getHandle(projectId);
+
+    if (meta?.source === 'browser') {
+      this.busySignal.set(true);
+      try {
+        const fromCache = await this.openFromCache(projectId);
+        if (fromCache.ok) {
+          return fromCache;
+        }
+      } finally {
+        this.busySignal.set(false);
+      }
+      await this.setRecentFailure({
+        projectId,
+        name: meta.name,
+        fileName: '',
+        kind: 'missing',
+        message: 'No browser copy of that project was found.',
+      });
+      return { ok: false, message: 'No browser copy of that project was found.' };
+    }
 
     if (!handle) {
       await this.setRecentFailure({
@@ -334,10 +374,6 @@ export class ProjectSessionService {
     }
   }
 
-  dismissDirtyFile(): void {
-    this.dirtyFileSignal.set(null);
-  }
-
   async updateProject(
     mutator: (current: TwProject) => TwProject,
   ): Promise<SessionActionResult> {
@@ -351,6 +387,7 @@ export class ProjectSessionService {
     const handle = this.fileHandleSignal();
     if (!handle) {
       this.saveErrorSignal.set(null);
+      await this.persistBrowser(next);
       return { ok: true };
     }
 
@@ -386,11 +423,10 @@ export class ProjectSessionService {
       {
         title: input.title,
         description: input.description,
-        points: null,
-        assigned: null,
         status: input.status,
       },
       current.statuses,
+      current.tasks,
     );
     if (!built.ok) {
       return { ok: false, message: built.reason };
@@ -412,8 +448,6 @@ export class ProjectSessionService {
       {
         title: input.title,
         description: input.description,
-        points: existing.points,
-        assigned: existing.assigned,
         status: existing.status,
       },
       current.statuses,
@@ -613,12 +647,32 @@ export class ProjectSessionService {
     if ('handle' in dest) {
       await this.attachFile(dest.handle, validation.project, dest.fileName, dest.lastModified);
     } else {
-      this.activateMemory(validation.project, dest.fileName);
+      await this.activateBrowser(validation.project, dest.fileName);
     }
     return { ok: true };
   }
 
-  private activateMemory(project: TwProject, fileName: string): void {
+  /** Load a project from the in-browser store. Same TwProject blob as a file. Caller manages busy. */
+  private async openFromCache(projectId: string): Promise<SessionActionResult> {
+    const cached = await this.cache.get(projectId);
+    if (!cached?.project) {
+      const message = 'No browser copy of that project was found.';
+      this.uiErrorSignal.set(message);
+      return { ok: false, message };
+    }
+    const validation = validateProject(cached.project);
+    if (!validation.ok) {
+      const message = validation.reason
+        ? `${validation.message}: ${validation.reason}`
+        : validation.message;
+      this.uiErrorSignal.set(message);
+      return { ok: false, message };
+    }
+    await this.activateBrowser(validation.project, cached.fileName);
+    return { ok: true };
+  }
+
+  private async activateBrowser(project: TwProject, fileName: string | null): Promise<void> {
     this.fileHandleSignal.set(null);
     this.diskStamp = null;
     this.projectSignal.set(project);
@@ -626,6 +680,12 @@ export class ProjectSessionService {
     this.saveErrorSignal.set(null);
     this.uiErrorSignal.set(null);
     this.dirtyFileSignal.set(null);
+    await this.persistBrowser(project);
+  }
+
+  private async persistBrowser(project: TwProject): Promise<void> {
+    await this.cache.put(project, null);
+    await this.recents.recordBrowser(project);
   }
 
   private async attachFile(

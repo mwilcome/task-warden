@@ -10,7 +10,7 @@ export class FileSystemUnsupportedError extends Error {
   override readonly name = 'FileSystemUnsupportedError';
   constructor() {
     super(
-      'This browser cannot keep a .tw.json file open on disk. Upload a file to open it and download to save. Chrome or Edge can write the file on disk.',
+      'This browser cannot keep a .tw.json file open on disk. Use New browser project (saved in this browser), or upload a file and download to save. Chrome or Edge can write the file on disk.',
     );
   }
 }
@@ -32,7 +32,6 @@ export interface OpenedProjectFile {
 /**
  * Infrastructure: File System Access (Chrome/Edge) and upload/download (Safari).
  * No domain validation here — application layer parses/validates.
- * This is not a fake filesystem: Safari never stores the project JSON locally.
  */
 @Injectable({ providedIn: 'root' })
 export class ProjectFileRepository {

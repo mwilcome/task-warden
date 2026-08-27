@@ -5,6 +5,7 @@ import {
   ProjectFileRepository,
   UserCancelledFilePickerError,
 } from '../fs/project-file.repository';
+import { ProjectCacheService } from '../fs/project-cache.service';
 import { RecentProjectsService } from '../fs/recent-projects.service';
 import { createEmptyProject } from './create-empty-project';
 import { INVALID_FILE_MESSAGE, SCHEMA_VERSION } from './project.types';
@@ -27,10 +28,17 @@ describe('ProjectSessionService', () => {
   let recents: {
     list: ReturnType<ReturnType<typeof signal>['asReadonly']>;
     record: ReturnType<typeof vi.fn>;
+    recordFile: ReturnType<typeof vi.fn>;
+    recordBrowser: ReturnType<typeof vi.fn>;
     getHandle: ReturnType<typeof vi.fn>;
     getMeta: ReturnType<typeof vi.fn>;
     remove: ReturnType<typeof vi.fn>;
     refresh: ReturnType<typeof vi.fn>;
+  };
+  let cache: {
+    put: ReturnType<typeof vi.fn>;
+    get: ReturnType<typeof vi.fn>;
+    remove: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -46,10 +54,17 @@ describe('ProjectSessionService', () => {
     recents = {
       list: signal([]).asReadonly(),
       record: vi.fn(async () => undefined),
+      recordFile: vi.fn(async () => undefined),
+      recordBrowser: vi.fn(async () => undefined),
       getHandle: vi.fn(async () => null),
       getMeta: vi.fn(async () => null),
       remove: vi.fn(async () => undefined),
       refresh: vi.fn(async () => undefined),
+    };
+    cache = {
+      put: vi.fn(async () => undefined),
+      get: vi.fn(async () => null),
+      remove: vi.fn(async () => undefined),
     };
 
     TestBed.configureTestingModule({
@@ -57,6 +72,7 @@ describe('ProjectSessionService', () => {
         ProjectSessionService,
         { provide: ProjectFileRepository, useValue: files },
         { provide: RecentProjectsService, useValue: recents },
+        { provide: ProjectCacheService, useValue: cache },
       ],
     });
     session = TestBed.inject(ProjectSessionService);
@@ -101,18 +117,135 @@ describe('ProjectSessionService', () => {
     expect(session.project()).toBeNull();
   });
 
-  it('newProject without File System Access uses memory + download', async () => {
+  it('newProject without File System Access uses New browser project', async () => {
     files.isSupported.mockReturnValue(false);
     const result = await session.newProject();
     expect(result.ok).toBe(true);
     expect(session.hasFile()).toBe(false);
+    expect(session.savedInBrowser()).toBe(true);
     expect(session.needsDownload()).toBe(true);
     expect(session.hasWorkspace()).toBe(true);
     expect(session.project()?.name).toBe('Untitled Project');
+    expect(cache.put).toHaveBeenCalled();
+    expect(recents.recordBrowser).toHaveBeenCalled();
 
     const downloaded = session.downloadProject();
     expect(downloaded.ok).toBe(true);
     expect(files.download).toHaveBeenCalled();
+  });
+
+  it('newBrowserOnlyProject saves in this browser without a disk file', async () => {
+    const result = await session.newBrowserOnlyProject();
+    expect(result.ok).toBe(true);
+    expect(session.savedInBrowser()).toBe(true);
+    expect(session.hasFile()).toBe(false);
+    expect(session.hasWorkspace()).toBe(true);
+    expect(files.pickLocationAndWrite).not.toHaveBeenCalled();
+    expect(cache.put).toHaveBeenCalled();
+    expect(recents.recordBrowser).toHaveBeenCalled();
+  });
+
+  it('updateProject on a browser project persists to cache, not disk', async () => {
+    await session.newBrowserOnlyProject();
+    files.write.mockClear();
+    cache.put.mockClear();
+    recents.recordBrowser.mockClear();
+
+    const result = await session.updateProject((p) => ({ ...p, name: 'Cached' }));
+    expect(result.ok).toBe(true);
+    expect(session.project()?.name).toBe('Cached');
+    expect(files.write).not.toHaveBeenCalled();
+    expect(cache.put).toHaveBeenCalled();
+    expect(recents.recordBrowser).toHaveBeenCalled();
+  });
+
+  it('openRecent loads a browser-saved project from cache', async () => {
+    const project = createEmptyProject();
+    recents.getMeta.mockResolvedValue({
+      id: project.id,
+      name: project.name,
+      fileName: null,
+      source: 'browser',
+      openedAt: '2026-08-01T00:00:00.000Z',
+    });
+    recents.getHandle.mockResolvedValue(null);
+    cache.get.mockResolvedValue({
+      id: project.id,
+      project,
+      fileName: null,
+      cachedAt: '2026-08-01T00:00:00.000Z',
+    });
+
+    const result = await session.openRecent(project.id);
+    expect(result.ok).toBe(true);
+    expect(session.savedInBrowser()).toBe(true);
+    expect(session.project()?.id).toBe(project.id);
+    expect(files.readHandle).not.toHaveBeenCalled();
+  });
+
+  it('openRecent ignores extra keys on an old cache row', async () => {
+    const project = {
+      ...createEmptyProject(),
+      owner: null,
+      tasks: [
+        {
+          id: 'b2c3d4e5-f6a7-4890-b123-456789abcdef',
+          title: 'Legacy',
+          description: '',
+          points: 3,
+          status: 'Todo',
+          assigned: null,
+          created: '2026-08-01T00:00:00.000Z',
+          updated: '2026-08-01T00:00:00.000Z',
+          closed: null,
+        },
+      ],
+    };
+    recents.getMeta.mockResolvedValue({
+      id: project.id,
+      name: project.name,
+      fileName: null,
+      source: 'browser',
+      openedAt: '2026-08-01T00:00:00.000Z',
+    });
+    recents.getHandle.mockResolvedValue(null);
+    cache.get.mockResolvedValue({
+      id: project.id,
+      project,
+      fileName: null,
+      cachedAt: '2026-08-01T00:00:00.000Z',
+    });
+
+    const result = await session.openRecent(project.id);
+    expect(result.ok).toBe(true);
+    expect(session.project()?.tasks[0].title).toBe('Legacy');
+    expect(session.project()?.tasks[0].id).toBe('b2c3d4e5-f6a7-4890-b123-456789abcdef');
+    expect(session.project() && 'owner' in session.project()!).toBe(false);
+    expect(session.project() && 'points' in session.project()!.tasks[0]).toBe(false);
+  });
+
+  it('openRecent does not open a missing disk file from cache', async () => {
+    const project = createEmptyProject();
+    recents.getMeta.mockResolvedValue({
+      id: project.id,
+      name: project.name,
+      fileName: 'gone.tw.json',
+      source: 'file',
+      openedAt: '2026-08-01T00:00:00.000Z',
+    });
+    recents.getHandle.mockResolvedValue(null);
+    cache.get.mockResolvedValue({
+      id: project.id,
+      project,
+      fileName: 'gone.tw.json',
+      cachedAt: '2026-08-01T00:00:00.000Z',
+    });
+
+    const result = await session.openRecent(project.id);
+    expect(result.ok).toBe(false);
+    expect(session.hasWorkspace()).toBe(false);
+    expect(cache.get).not.toHaveBeenCalled();
+    expect(session.recentFailure()?.kind).toBe('missing');
   });
 
   it('openProject loads valid file into session', async () => {
@@ -161,7 +294,7 @@ describe('ProjectSessionService', () => {
     expect(session.uiError()).toContain(INVALID_FILE_MESSAGE);
   });
 
-  it('openUploadedFile loads valid JSON into a download-only session', async () => {
+  it('openUploadedFile loads valid JSON into a saved-in-this-browser session', async () => {
     const project = createEmptyProject();
     const file = new File([JSON.stringify(project)], 'phone.tw.json', {
       type: 'application/json',
@@ -169,8 +302,11 @@ describe('ProjectSessionService', () => {
     const result = await session.openUploadedFile(file);
     expect(result.ok).toBe(true);
     expect(session.needsDownload()).toBe(true);
+    expect(session.savedInBrowser()).toBe(true);
     expect(session.project()?.id).toBe(project.id);
     expect(session.fileName()).toBe('phone.tw.json');
+    expect(cache.put).toHaveBeenCalled();
+    expect(recents.recordBrowser).toHaveBeenCalled();
   });
 
   it('updateProject mutates memory and auto-saves full object', async () => {
@@ -289,7 +425,7 @@ describe('ProjectSessionService', () => {
     expect(new FileSystemUnsupportedError().message).toContain('Chrome or Edge');
   });
 
-  it('createTask adds a task and auto-saves without assigned/points UI fields', async () => {
+  it('createTask adds a task and auto-saves', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
     files.pickLocationAndWrite.mockResolvedValue({
       handle,
@@ -302,12 +438,11 @@ describe('ProjectSessionService', () => {
     expect(result.ok).toBe(true);
     expect(session.project()?.tasks).toHaveLength(1);
     expect(session.project()?.tasks[0].title).toBe('First');
-    expect(session.project()?.tasks[0].points).toBeNull();
-    expect(session.project()?.tasks[0].assigned).toBeNull();
+    expect(session.project()?.tasks[0].id).toBe('t1');
     expect(files.write).toHaveBeenCalled();
   });
 
-  it('saveTask updates title and body and preserves points/assigned/status', async () => {
+  it('saveTask updates title and body and preserves status', async () => {
     const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
     files.pickLocationAndWrite.mockResolvedValue({
       handle,

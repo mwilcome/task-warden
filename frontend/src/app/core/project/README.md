@@ -8,7 +8,7 @@ Project model and session logic for `.tw.json`.
 | `create-empty-project.ts` | New project factory |
 | `validate-project.ts` | Parse and validate (fail closed) |
 | `task-ops.ts`, `status-ops.ts`, `board-model.ts` | Task and column changes |
-| `uuid.ts` | UUID v4 |
+| `ids.ts` | Project and task ids |
 | `project-session.service.ts` | Open, save, session state |
 
 Public exports: `index.ts`. Schema: repo `docs/schema.md`.

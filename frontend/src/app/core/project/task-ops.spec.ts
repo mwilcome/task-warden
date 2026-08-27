@@ -22,11 +22,12 @@ describe('task-ops', () => {
     expect(closedForStatus(statuses, 'Todo', now)).toBeNull();
   });
 
-  it('buildNewTask sets uuid, timestamps, and closed when last status', () => {
+  it('buildNewTask sets tN id, timestamps, and closed when last status', () => {
     const statuses = ['Todo', 'In Progress', 'Done'];
     const result = buildNewTask(
-      { title: '  Ship it  ', status: 'Done', description: 'd', points: 2, assigned: 'me' },
+      { title: '  Ship it  ', status: 'Done', description: 'd' },
       statuses,
+      [],
       now,
     );
     expect(result.ok).toBe(true);
@@ -36,23 +37,32 @@ describe('task-ops', () => {
       expect(result.value.created).toBe(now);
       expect(result.value.updated).toBe(now);
       expect(result.value.closed).toBe(now);
-      expect(result.value.points).toBe(2);
-      expect(result.value.id).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-      );
+      expect(result.value.id).toBe('t1');
     }
   });
 
-  it('buildNewTask rejects empty title and bad points', () => {
+  it('buildNewTask uses the next tN after existing tasks', () => {
+    const statuses = ['Todo', 'Done'];
+    const first = buildNewTask({ title: 'A', status: 'Todo' }, statuses, [], now);
+    expect(first.ok).toBe(true);
+    if (!first.ok) {
+      return;
+    }
+    const second = buildNewTask({ title: 'B', status: 'Todo' }, statuses, [first.value], now);
+    expect(second.ok).toBe(true);
+    if (second.ok) {
+      expect(second.value.id).toBe('t2');
+    }
+  });
+
+  it('buildNewTask rejects empty title', () => {
     const statuses = ['Todo', 'Done'];
     expect(buildNewTask({ title: '  ', status: 'Todo' }, statuses).ok).toBe(false);
-    expect(buildNewTask({ title: 'X', status: 'Todo', points: -1 }, statuses).ok).toBe(false);
-    expect(buildNewTask({ title: 'X', status: 'Todo', points: 1.5 }, statuses).ok).toBe(false);
   });
 
   it('applyTaskUpdate refreshes updated and toggles closed', () => {
     const statuses = ['Todo', 'Done'];
-    const created = buildNewTask({ title: 'A', status: 'Todo' }, statuses, now);
+    const created = buildNewTask({ title: 'A', status: 'Todo' }, statuses, [], now);
     expect(created.ok).toBe(true);
     if (!created.ok) {
       return;
@@ -63,8 +73,6 @@ describe('task-ops', () => {
       {
         title: 'A',
         description: '',
-        points: null,
-        assigned: null,
         status: 'Done',
       },
       statuses,
@@ -82,8 +90,6 @@ describe('task-ops', () => {
       {
         title: 'A',
         description: '',
-        points: null,
-        assigned: null,
         status: 'Todo',
       },
       statuses,
@@ -97,7 +103,7 @@ describe('task-ops', () => {
 
   it('add/replace/remove tasks on project', () => {
     let project = createEmptyProject();
-    const t = buildNewTask({ title: 'One', status: 'Todo' }, project.statuses, now);
+    const t = buildNewTask({ title: 'One', status: 'Todo' }, project.statuses, project.tasks, now);
     expect(t.ok).toBe(true);
     if (!t.ok) {
       return;
@@ -107,7 +113,7 @@ describe('task-ops', () => {
 
     const updated = applyTaskUpdate(
       t.value,
-      { title: 'Two', description: 'x', points: 1, assigned: null, status: 'Todo' },
+      { title: 'Two', description: 'x', status: 'Todo' },
       project.statuses,
       now,
     );
@@ -124,7 +130,7 @@ describe('task-ops', () => {
 
   it('moveTaskToStatus updates status, updated, and closed', () => {
     let project = createEmptyProject();
-    const t = buildNewTask({ title: 'Drag me', status: 'Todo' }, project.statuses, now);
+    const t = buildNewTask({ title: 'Drag me', status: 'Todo' }, project.statuses, project.tasks, now);
     expect(t.ok).toBe(true);
     if (!t.ok) {
       return;

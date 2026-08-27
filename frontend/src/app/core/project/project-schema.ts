@@ -1,13 +1,13 @@
 import { AI_INSTRUCTIONS, SCHEMA_VERSION } from './project.types';
 
 /** Suggested download name (shown in the browser save dialog). */
-export const PROJECT_FILE_GUIDE_FILENAME = 'task-warden-project-file-guide.md';
+export const PROJECT_FILE_SCHEMA_FILENAME = 'task-warden-schema.md';
 
 /**
- * Build the downloadable guide for the `.tw.json` project format.
+ * Build the downloadable schema for the `.tw.json` project format.
  */
-export function buildProjectFileGuide(): string {
-  return `# Task Warden project file guide
+export function buildProjectSchema(): string {
+  return `# Task Warden project file schema
 
 This file explains the Task Warden project format.
 
@@ -29,13 +29,13 @@ This file explains the Task Warden project format.
 \`\`\`json
 {
   "version": "${SCHEMA_VERSION}",
-  "id": "uuid-v4",
+  "id": "k7xm2p9q",
   "name": "string",
   "statuses": ["Todo", "In Progress", "Done"],
   "aiInstructions": "string",
   "tasks": [
     {
-      "id": "uuid-v4",
+      "id": "t1",
       "title": "string (required, non-empty)",
       "description": "string",
       "status": "must be one of statuses",
@@ -47,15 +47,13 @@ This file explains the Task Warden project format.
 }
 \`\`\`
 
-Unused keys (\`owner\`, \`startDate\`, \`endDate\`, and on tasks \`points\`, \`assigned\`) stay in the file as \`null\`. Leave them unchanged.
-
 ---
 
 ## Rules when editing
 
 1. Keep **valid JSON**. Do not invent new top-level fields.
 2. \`version\` must be exactly \`${SCHEMA_VERSION}\`.
-3. Every \`id\` (project and tasks) must be a **UUID v4**. Generate a new one for every new task.
+3. Project \`id\` is 8 lowercase characters. Task ids are \`t1\`, \`t2\`, … Copy an existing id pattern; do not invent UUIDs.
 4. \`statuses\` is an ordered list of column names. The **last** status is the done column (do not hard-code the word "Done").
 5. Each task \`status\` must match one entry in \`statuses\`.
 6. On every task change, set \`updated\` to the current time in ISO-8601 UTC.
@@ -82,21 +80,16 @@ Follow that field on the specific file you are editing if it differs.
 \`\`\`json
 {
   "version": "${SCHEMA_VERSION}",
-  "id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
+  "id": "k7xm2p9q",
   "name": "Sample Project",
-  "owner": null,
-  "startDate": null,
-  "endDate": null,
   "statuses": ["Todo", "In Progress", "Done"],
   "aiInstructions": "(see aiInstructions on a real project file)",
   "tasks": [
     {
-      "id": "b2c3d4e5-f6a7-4890-b123-456789abcdef",
+      "id": "t1",
       "title": "Example task",
       "description": "",
-      "points": null,
       "status": "Todo",
-      "assigned": null,
       "created": "2026-08-10T18:00:00.000Z",
       "updated": "2026-08-10T18:00:00.000Z",
       "closed": null
@@ -116,16 +109,16 @@ Follow that field on the specific file you are editing if it differs.
 }
 
 /**
- * Trigger a browser download of the project file guide.
+ * Trigger a browser download of the project file schema.
  * Works without File System Access (any browser that supports Blob downloads).
  */
-export function downloadProjectFileGuide(): void {
-  const content = buildProjectFileGuide();
+export function downloadProjectSchema(): void {
+  const content = buildProjectSchema();
   const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = PROJECT_FILE_GUIDE_FILENAME;
+  anchor.download = PROJECT_FILE_SCHEMA_FILENAME;
   anchor.rel = 'noopener';
   document.body.appendChild(anchor);
   anchor.click();
