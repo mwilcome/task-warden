@@ -65,7 +65,6 @@
   --shadow-brand: 0 8px 24px rgb(16 24 40 / 0.08);
 
   /* Layout */
-  --content-max: 40rem;
   --shell-max: 72rem;
 }
 
@@ -155,7 +154,6 @@ app-brand-mark {
   flex-shrink: 0;
   background: var(--color-primary);
   color: #fff;
-  /* Keystone / shield silhouette — same polygon as main */
   clip-path: polygon(50% 0%, 100% 12%, 100% 68%, 50% 100%, 0% 68%, 0% 12%);
 }
 
@@ -216,38 +214,11 @@ app-brand-mark {
   flex-direction: column;
 }
 
-.page-center {
-  min-height: 100dvh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-5);
-}
-
-.container {
-  width: 100%;
-  max-width: var(--content-max);
-  margin-inline: auto;
-  padding-inline: var(--space-4);
-}
-
 .container-wide {
   width: 100%;
   max-width: var(--shell-max);
   margin-inline: auto;
   padding-inline: var(--space-4);
-}
-
-.stack {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.stack-sm {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
 }
 
 .row {
@@ -787,18 +758,12 @@ app-brand-mark {
   margin: 0;
 }
 
-.open-prompt__guide {
+.open-prompt__schema {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   padding-top: var(--space-2);
   border-top: 1px solid var(--color-border);
-}
-
-.open-prompt__guide-help {
-  font-size: var(--font-size-sm);
-  line-height: 1.4;
-  text-align: center;
 }
 
 .open-prompt__recent {
@@ -891,13 +856,6 @@ app-brand-mark {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  align-items: flex-start;
 }
 
 label {

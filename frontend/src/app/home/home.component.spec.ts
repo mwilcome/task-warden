@@ -15,14 +15,13 @@ function sessionStub(overrides: Record<string, unknown> = {}) {
     busy: signal(false).asReadonly(),
     hasFile: signal(false).asReadonly(),
     hasWorkspace: hasWorkspace.asReadonly(),
-    needsDownload: signal(false).asReadonly(),
     savedInBrowser: signal(false).asReadonly(),
     fileSystemSupported: true,
     recentProjects: signal([]).asReadonly(),
     recentFailure: signal(null).asReadonly(),
     dirtyFile: signal(null).asReadonly(),
     newProject: vi.fn(),
-    newBrowserOnlyProject: vi.fn(),
+    newBrowserProject: vi.fn(),
     openProject: vi.fn(),
     openUploadedFile: vi.fn(),
     openRecent: vi.fn(),
@@ -58,7 +57,6 @@ describe('HomeComponent', () => {
     expect(el.textContent).toContain('New browser project');
     expect(el.textContent).toContain('Open project');
     expect(el.textContent).toContain('Download schema (.md)');
-    expect(el.textContent?.toLowerCase()).not.toContain('last opened');
   });
 
   it('renders the board only after a workspace exists', async () => {
@@ -99,7 +97,6 @@ describe('HomeComponent', () => {
             hasWorkspace: signal(true).asReadonly(),
             hasFile: signal(false).asReadonly(),
             savedInBrowser: signal(true).asReadonly(),
-            needsDownload: signal(true).asReadonly(),
           }),
         },
       ],

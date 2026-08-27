@@ -1,7 +1,6 @@
 /**
  * Task Warden project schema v1.0.0.
- * Domain types for the Project bounded context (no Angular / no I/O).
- * See docs/schema.md and docs/architecture.md.
+ * Domain types (no Angular / no I/O). See docs/schema.md.
  */
 
 /** Schema version required on every project file. */

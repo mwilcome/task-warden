@@ -122,7 +122,7 @@ export class ProjectFileRepository {
     }
   }
 
-  /** Safari / no File System Access: trigger a .tw.json download. Not a stored filesystem. */
+  /** Download the open project as `.tw.json`. */
   download(project: TwProject, fileName: string): void {
     const payload = `${JSON.stringify(project, null, 2)}\n`;
     const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });

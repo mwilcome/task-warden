@@ -156,7 +156,7 @@ describe('validateProject', () => {
     }
   });
 
-  it('does not require aiInstructions to match the locked template (AI may edit)', () => {
+  it('accepts a custom aiInstructions string', () => {
     const project = {
       ...createEmptyProject(),
       aiInstructions: 'Custom AI notes',

@@ -167,7 +167,7 @@
             Reload
           </button>
         }
-        @if (session.needsDownload()) {
+        @if (session.savedInBrowser()) {
           <button
             type="button"
             class="btn btn-ghost btn-sm"
@@ -285,7 +285,7 @@
           </button>
         </div>
 
-        <div class="open-prompt__guide">
+        <div class="open-prompt__schema">
           <button
             type="button"
             class="btn btn-secondary btn-sm btn-block"

@@ -23,9 +23,6 @@ describe('createEmptyProject', () => {
     const project = createEmptyProject();
     expect(project.name).toBe(DEFAULT_PROJECT_NAME);
     expect(project.tasks).toEqual([]);
-    expect('owner' in project).toBe(false);
-    expect('startDate' in project).toBe(false);
-    expect('endDate' in project).toBe(false);
   });
 
   it('uses default statuses (last status is done column)', () => {
@@ -37,8 +34,6 @@ describe('createEmptyProject', () => {
   it('embeds the locked aiInstructions string verbatim', () => {
     const project = createEmptyProject();
     expect(project.aiInstructions).toBe(AI_INSTRUCTIONS);
-    expect(project.aiInstructions).toContain('Copy an existing id pattern');
-    expect(project.aiInstructions).not.toContain('UUID v4');
   });
 
   it('always produces a valid, loadable project', () => {

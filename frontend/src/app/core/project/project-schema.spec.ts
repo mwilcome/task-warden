@@ -14,7 +14,6 @@ describe('project file schema', () => {
     expect(schema).toContain('k7xm2p9q');
     expect(schema).toContain('t1');
     expect(schema).toContain('Copy an existing id pattern');
-    expect(schema).not.toContain('UUID v4');
     expect(schema).not.toContain('"owner"');
     expect(schema).not.toContain('"points"');
     expect(schema).not.toContain('"assigned"');

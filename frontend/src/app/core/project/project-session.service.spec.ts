@@ -27,7 +27,6 @@ describe('ProjectSessionService', () => {
   };
   let recents: {
     list: ReturnType<ReturnType<typeof signal>['asReadonly']>;
-    record: ReturnType<typeof vi.fn>;
     recordFile: ReturnType<typeof vi.fn>;
     recordBrowser: ReturnType<typeof vi.fn>;
     getHandle: ReturnType<typeof vi.fn>;
@@ -53,7 +52,6 @@ describe('ProjectSessionService', () => {
     };
     recents = {
       list: signal([]).asReadonly(),
-      record: vi.fn(async () => undefined),
       recordFile: vi.fn(async () => undefined),
       recordBrowser: vi.fn(async () => undefined),
       getHandle: vi.fn(async () => null),
@@ -123,7 +121,6 @@ describe('ProjectSessionService', () => {
     expect(result.ok).toBe(true);
     expect(session.hasFile()).toBe(false);
     expect(session.savedInBrowser()).toBe(true);
-    expect(session.needsDownload()).toBe(true);
     expect(session.hasWorkspace()).toBe(true);
     expect(session.project()?.name).toBe('Untitled Project');
     expect(cache.put).toHaveBeenCalled();
@@ -134,8 +131,8 @@ describe('ProjectSessionService', () => {
     expect(files.download).toHaveBeenCalled();
   });
 
-  it('newBrowserOnlyProject saves in this browser without a disk file', async () => {
-    const result = await session.newBrowserOnlyProject();
+  it('newBrowserProject saves in this browser without a disk file', async () => {
+    const result = await session.newBrowserProject();
     expect(result.ok).toBe(true);
     expect(session.savedInBrowser()).toBe(true);
     expect(session.hasFile()).toBe(false);
@@ -146,7 +143,7 @@ describe('ProjectSessionService', () => {
   });
 
   it('updateProject on a browser project persists to cache, not disk', async () => {
-    await session.newBrowserOnlyProject();
+    await session.newBrowserProject();
     files.write.mockClear();
     cache.put.mockClear();
     recents.recordBrowser.mockClear();
@@ -169,12 +166,7 @@ describe('ProjectSessionService', () => {
       openedAt: '2026-08-01T00:00:00.000Z',
     });
     recents.getHandle.mockResolvedValue(null);
-    cache.get.mockResolvedValue({
-      id: project.id,
-      project,
-      fileName: null,
-      cachedAt: '2026-08-01T00:00:00.000Z',
-    });
+    cache.get.mockResolvedValue(project);
 
     const result = await session.openRecent(project.id);
     expect(result.ok).toBe(true);
@@ -209,12 +201,7 @@ describe('ProjectSessionService', () => {
       openedAt: '2026-08-01T00:00:00.000Z',
     });
     recents.getHandle.mockResolvedValue(null);
-    cache.get.mockResolvedValue({
-      id: project.id,
-      project,
-      fileName: null,
-      cachedAt: '2026-08-01T00:00:00.000Z',
-    });
+    cache.get.mockResolvedValue(project);
 
     const result = await session.openRecent(project.id);
     expect(result.ok).toBe(true);
@@ -234,12 +221,7 @@ describe('ProjectSessionService', () => {
       openedAt: '2026-08-01T00:00:00.000Z',
     });
     recents.getHandle.mockResolvedValue(null);
-    cache.get.mockResolvedValue({
-      id: project.id,
-      project,
-      fileName: 'gone.tw.json',
-      cachedAt: '2026-08-01T00:00:00.000Z',
-    });
+    cache.get.mockResolvedValue(project);
 
     const result = await session.openRecent(project.id);
     expect(result.ok).toBe(false);
@@ -301,7 +283,6 @@ describe('ProjectSessionService', () => {
     });
     const result = await session.openUploadedFile(file);
     expect(result.ok).toBe(true);
-    expect(session.needsDownload()).toBe(true);
     expect(session.savedInBrowser()).toBe(true);
     expect(session.project()?.id).toBe(project.id);
     expect(session.fileName()).toBe('phone.tw.json');

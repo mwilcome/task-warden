@@ -2,7 +2,7 @@ import { Injectable, signal } from '@angular/core';
 import type { TwProject } from '../project/project.types';
 
 const DB_NAME = 'task-warden';
-/** v4: recents are disk paths and browser-saved projects. */
+/** Recents: disk handles and browser-saved projects. */
 const DB_VERSION = 4;
 const STORE = 'recents';
 const MAX_RECENTS = 8;
@@ -73,14 +73,12 @@ export class RecentProjectsService {
   async recordBrowser(project: TwProject): Promise<void> {
     try {
       const db = await this.openDb();
-      const existing = await this.get(db, project.id);
       const record: RecentProjectRecord = {
         id: project.id,
         name: project.name,
         fileName: null,
         source: 'browser',
         openedAt: new Date().toISOString(),
-        handle: existing?.handle,
       };
       await this.put(db, record);
       await this.trim(db);
@@ -88,14 +86,6 @@ export class RecentProjectsService {
     } catch {
       /* ignore */
     }
-  }
-
-  async record(
-    handle: FileSystemFileHandle,
-    project: TwProject,
-    fileName: string,
-  ): Promise<void> {
-    return this.recordFile(handle, project, fileName);
   }
 
   async getHandle(projectId: string): Promise<FileSystemFileHandle | null> {

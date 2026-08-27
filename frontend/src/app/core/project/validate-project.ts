@@ -25,8 +25,7 @@ function isNullableString(value: unknown): value is string | null {
 
 /**
  * Validates an unknown value as a TwProject.
- * Extra keys (including legacy owner/points/assigned) are ignored.
- * Fail closed on missing or invalid required fields — no sanitizing of values.
+ * Extra keys are ignored. Missing or invalid required fields are rejected.
  */
 export function validateProject(value: unknown): ProjectValidationResult {
   if (!isPlainObject(value)) {
@@ -172,7 +171,7 @@ function validateTask(
 
 /**
  * Parse a JSON string and validate as a TwProject.
- * Invalid JSON → Invalid Task Warden file (fail closed).
+ * Invalid JSON → Invalid Task Warden file.
  */
 export function parseAndValidateProject(jsonText: string): ProjectValidationResult {
   let parsed: unknown;

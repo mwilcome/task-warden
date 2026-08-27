@@ -5,40 +5,34 @@ const DB_NAME = 'task-warden-cache';
 const DB_VERSION = 1;
 const STORE = 'projects';
 
-export interface CachedProjectRecord {
+/** IndexedDB row. `project` is the same TwProject blob as a `.tw.json` file. */
+interface CacheRow {
   id: string;
   project: TwProject;
-  fileName: string | null;
-  cachedAt: string;
 }
 
 /**
- * In-browser store for New browser project. IndexedDB holds the same TwProject
- * blob as a `.tw.json` file. Recents are metadata only.
+ * In-browser store for New browser project. IndexedDB holds the same
+ * TwProject blob as a `.tw.json` file. Recents are metadata only.
  */
 @Injectable({ providedIn: 'root' })
 export class ProjectCacheService {
   private dbPromise: Promise<IDBDatabase> | null = null;
 
-  async put(project: TwProject, fileName: string | null): Promise<void> {
+  async put(project: TwProject): Promise<void> {
     try {
       const db = await this.openDb();
-      const record: CachedProjectRecord = {
-        id: project.id,
-        project,
-        fileName,
-        cachedAt: new Date().toISOString(),
-      };
-      await this.idbPut(db, record);
+      await this.idbPut(db, { id: project.id, project });
     } catch {
-      /* store is best-effort */
+      /* IndexedDB may be unavailable */
     }
   }
 
-  async get(projectId: string): Promise<CachedProjectRecord | null> {
+  async get(projectId: string): Promise<TwProject | null> {
     try {
       const db = await this.openDb();
-      return (await this.idbGet(db, projectId)) ?? null;
+      const row = await this.idbGet(db, projectId);
+      return row?.project ?? null;
     } catch {
       return null;
     }
@@ -76,16 +70,16 @@ export class ProjectCacheService {
     return this.dbPromise;
   }
 
-  private idbGet(db: IDBDatabase, id: string): Promise<CachedProjectRecord | undefined> {
+  private idbGet(db: IDBDatabase, id: string): Promise<CacheRow | undefined> {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).get(id);
-      req.onsuccess = () => resolve(req.result as CachedProjectRecord | undefined);
+      req.onsuccess = () => resolve(req.result as CacheRow | undefined);
       req.onerror = () => reject(req.error);
     });
   }
 
-  private idbPut(db: IDBDatabase, record: CachedProjectRecord): Promise<void> {
+  private idbPut(db: IDBDatabase, record: CacheRow): Promise<void> {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite');
       tx.objectStore(STORE).put(record);

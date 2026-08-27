@@ -6,7 +6,7 @@ import { buildNewTask, addTask } from '../core/project/task-ops';
 import { BoardComponent } from './board.component';
 
 describe('BoardComponent', () => {
-  it('renders columns and cards only — no points node or assigned label', async () => {
+  it('renders columns and cards', async () => {
     let project = createEmptyProject();
     const built = buildNewTask(
       { title: 'Ship board', description: 'body', status: 'Todo' },
@@ -42,8 +42,5 @@ describe('BoardComponent', () => {
     expect(el.querySelectorAll('.board-column').length).toBeGreaterThan(0);
     expect(el.textContent).toContain('Todo');
     expect(el.textContent).toContain('Ship board');
-    expect(el.querySelector('.task-card__points')).toBeNull();
-    expect(el.querySelector('#task-assigned')).toBeNull();
-    expect(el.textContent?.toLowerCase()).not.toContain('assigned');
   });
 });

@@ -6,7 +6,7 @@ Project model and session logic for `.tw.json`.
 |-------|------|
 | `project.types.ts` | Types and constants |
 | `create-empty-project.ts` | New project factory |
-| `validate-project.ts` | Parse and validate (fail closed) |
+| `validate-project.ts` | Parse and validate |
 | `task-ops.ts`, `status-ops.ts`, `board-model.ts` | Task and column changes |
 | `ids.ts` | Project and task ids |
 | `project-session.service.ts` | Open, save, session state |

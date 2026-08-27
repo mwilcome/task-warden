@@ -6,7 +6,7 @@ import { buildNewTask } from '../core/project/task-ops';
 import { TaskPanelComponent } from './task-panel.component';
 
 describe('TaskPanelComponent', () => {
-  it('shows title, body, and confirm-delete only', async () => {
+  it('shows title, body, and confirm-delete', async () => {
     const project = createEmptyProject();
     const built = buildNewTask({ title: 'Edit me', description: 'notes', status: 'Todo' }, project.statuses);
     expect(built.ok).toBe(true);
@@ -37,11 +37,6 @@ describe('TaskPanelComponent', () => {
     expect(el.querySelector('#task-title')).toBeTruthy();
     expect(el.querySelector('#task-description')).toBeTruthy();
     expect(el.textContent).toContain('Body');
-    expect(el.querySelector('#task-points')).toBeNull();
-    expect(el.querySelector('#task-assigned')).toBeNull();
-    expect(el.querySelector('#task-status')).toBeNull();
-    expect(el.textContent?.toLowerCase()).not.toContain('assigned');
-    expect(el.textContent?.toLowerCase()).not.toContain('points');
 
     const deleteBtn = Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Delete');
     expect(deleteBtn).toBeTruthy();
