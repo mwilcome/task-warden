@@ -388,7 +388,7 @@ export class BoardComponent {
     await this.dropStatusOn(statusFrom, status);
   }
 
-  // --- Status management (Story K) -----------------------------------------
+  // --- Status management ---------------------------------------------------
 
   protected onStatusDragStart(event: DragEvent, status: string): void {
     if (!event.dataTransfer) {

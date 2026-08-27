@@ -6,13 +6,13 @@
   "startDate": null,
   "endDate": null,
   "statuses": ["Todo", "In Progress", "Done"],
-  "aiInstructions": "Task Warden project file (local-first).\n- statuses: ordered list of column names. Default [\"Todo\",\"In Progress\",\"Done\"]. Custom allowed.\n- tasks: flat array. Each task has id (uuid v4), title (required non-empty string), description (string), points (number|null), status (must match one in statuses), assigned (string|null), created, updated, closed (ISO-8601 UTC, closed null until Done).\n- When editing: always update the \"updated\" field. Set \"closed\" when status becomes the last status in the statuses array. Clear \"closed\" if moved out of the last status.\n- Never invent new top-level fields. Keep the file valid JSON.\n- id must be a valid UUID. Generate a new one for every new task.\n- Prefer small, clear task titles.",
+  "aiInstructions": "Task Warden project file.\n- statuses: ordered list of column names. Default [\"Todo\",\"In Progress\",\"Done\"]. Custom allowed.\n- tasks: flat array. Each task has id (uuid v4), title (required non-empty string), description (string), status (must match one in statuses), created, updated, closed (ISO-8601 UTC; closed is set only in the last status).\n- When editing: always update \"updated\". Set \"closed\" when status becomes the last status. Clear \"closed\" if moved out of the last status.\n- Never invent new top-level fields. Keep the file valid JSON. Leave unused keys unchanged.\n- Generate a new UUID v4 for every new task. Prefer small, clear task titles.",
   "tasks": [
     {
       "id": "b2c3d4e5-f6a7-4890-b123-456789abcdef",
       "title": "Open this file in Task Warden",
-      "description": "Example task for manual and AI smoke tests.",
-      "points": 1,
+      "description": "Example task.",
+      "points": null,
       "status": "Todo",
       "assigned": null,
       "created": "2026-08-10T18:00:00.000Z",

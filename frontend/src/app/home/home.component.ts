@@ -99,14 +99,6 @@ export class HomeComponent {
     await this.session.openRecent(projectId);
   }
 
-  /**
-   * Intentionally unbound in the template. Do not wire Last-opened restore.
-   */
-  async onOpenLastProject(): Promise<void> {
-    this.projectsMenuOpen.set(false);
-    await this.session.openLastProject();
-  }
-
   onDownloadProjectFileGuide(): void {
     this.projectsMenuOpen.set(false);
     downloadProjectFileGuide();

@@ -400,7 +400,7 @@ app-brand-mark {
   border: 1px solid color-mix(in srgb, var(--color-warning) 25%, transparent);
 }
 
-/* Persistent non-blocking save failure (Story C) */
+/* Persistent non-blocking save failure */
 .save-banner {
   position: sticky;
   top: 0;
@@ -1321,11 +1321,6 @@ body.is-task-dragging {
   color: var(--color-text);
   line-height: 1.35;
   word-break: break-word;
-}
-
-.task-card__points {
-  flex-shrink: 0;
-  margin-top: 0.1rem;
 }
 
 .board-column__add {

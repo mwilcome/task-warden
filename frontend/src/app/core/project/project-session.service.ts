@@ -56,7 +56,7 @@ export type TaskPanelFields = {
  * Application service: open project session for the current browser tab.
  * Chrome/Edge: disk `.tw.json` via File System Access (auto-save).
  * Safari: in-memory after upload or create; persist with download only.
- * No IndexedDB project store. No last-opened restore.
+ * No IndexedDB project store.
  */
 @Injectable({ providedIn: 'root' })
 export class ProjectSessionService {
@@ -100,21 +100,6 @@ export class ProjectSessionService {
     }
     this.bootstrapStarted = true;
     await this.recents.refresh();
-  }
-
-  /**
-   * Unbound leftover: Home keeps `onOpenLastProject` but does not wire it.
-   * Opens the first recent path if any. Not last-opened restore from a cache.
-   */
-  async openLastProject(): Promise<SessionActionResult> {
-    this.uiErrorSignal.set(null);
-    const first = this.recents.list()[0];
-    if (!first) {
-      const message = 'No recent project to open.';
-      this.uiErrorSignal.set(message);
-      return { ok: false, message };
-    }
-    return this.openRecent(first.id);
   }
 
   /**

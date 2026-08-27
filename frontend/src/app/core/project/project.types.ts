@@ -15,15 +15,14 @@ export const DEFAULT_PROJECT_NAME = 'Untitled Project';
 
 /**
  * Locked aiInstructions text embedded in every new project.
- * The app must never mutate this field after create (AI tools may update it later).
+ * The app must never mutate this field after create.
  */
-export const AI_INSTRUCTIONS = `Task Warden project file (local-first).
+export const AI_INSTRUCTIONS = `Task Warden project file.
 - statuses: ordered list of column names. Default ["Todo","In Progress","Done"]. Custom allowed.
-- tasks: flat array. Each task has id (uuid v4), title (required non-empty string), description (string), points (number|null), status (must match one in statuses), assigned (string|null), created, updated, closed (ISO-8601 UTC, closed null until Done).
-- When editing: always update the "updated" field. Set "closed" when status becomes the last status in the statuses array. Clear "closed" if moved out of the last status.
-- Never invent new top-level fields. Keep the file valid JSON.
-- id must be a valid UUID. Generate a new one for every new task.
-- Prefer small, clear task titles.`;
+- tasks: flat array. Each task has id (uuid v4), title (required non-empty string), description (string), status (must match one in statuses), created, updated, closed (ISO-8601 UTC; closed is set only in the last status).
+- When editing: always update "updated". Set "closed" when status becomes the last status. Clear "closed" if moved out of the last status.
+- Never invent new top-level fields. Keep the file valid JSON. Leave unused keys unchanged.
+- Generate a new UUID v4 for every new task. Prefer small, clear task titles.`;
 
 /** User-facing validation failure prefix. */
 export const INVALID_FILE_MESSAGE = 'Invalid Task Warden file';

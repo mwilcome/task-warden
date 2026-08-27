@@ -21,7 +21,7 @@ Open the URL printed by the dev server (usually `http://localhost:4200`).
 
 1. **New project** — Chrome/Edge saves a new `.tw.json` where you choose. Safari starts a board in memory; use **Download** to save.
 2. **Open project** — Chrome/Edge picks an existing `.tw.json`. Safari uploads a file.
-3. **Recent** — last few disk paths in this browser (Chrome/Edge handles). Not a Last-opened restore.
+3. **Recent** — last few disk paths in this browser (Chrome/Edge handles).
 4. **Reload** — replace the board with the open file on disk (disk projects only). If the file changed under you, choose **Reload** or **Overwrite**. There is no merge.
 5. **Close** — leaves the board and returns to create-or-open.
 
@@ -54,4 +54,4 @@ Serve that directory with any static host. The app is client-only; no API URL is
 - Chrome or Edge can keep the project file open on disk.
 - Safari is upload + download only.
 - First visit shows create-or-open until a file is created or opened. The empty board is blocked until then.
-- The `.tw.json` file is the source of truth. Local agents can edit that file. There is no in-app AI.
+- The `.tw.json` file is the source of truth.

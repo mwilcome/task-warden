@@ -24,7 +24,6 @@ function sessionStub(overrides: Record<string, unknown> = {}) {
     openProject: vi.fn(),
     openUploadedFile: vi.fn(),
     openRecent: vi.fn(),
-    openLastProject: vi.fn(),
     downloadProject: vi.fn(),
     closeProject: vi.fn(),
     retrySave: vi.fn(),
@@ -56,11 +55,10 @@ describe('HomeComponent', () => {
     expect(el.textContent).toContain('New project');
     expect(el.textContent).toContain('Open project');
     expect(el.textContent).toContain('Download schema (.md)');
-    expect(el.textContent).toContain('no in-app AI');
     expect(el.textContent?.toLowerCase()).not.toContain('last opened');
     expect(el.textContent?.toLowerCase()).not.toContain('wizard');
     expect(el.textContent?.toLowerCase()).not.toContain('browser only');
-    expect(typeof fixture.componentInstance.onOpenLastProject).toBe('function');
+    expect(el.textContent?.toLowerCase()).not.toContain('ai hub');
   });
 
   it('renders the board only after a workspace exists', async () => {

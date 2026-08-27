@@ -18,6 +18,6 @@ describe('project file guide', () => {
     expect(guide).toContain('last');
     expect(guide).toContain('closed');
     expect(guide).toContain(AI_INSTRUCTIONS);
-    expect(guide.toLowerCase()).toContain('local agent');
+    expect(guide).toContain('Leave unused keys unchanged');
   });
 });

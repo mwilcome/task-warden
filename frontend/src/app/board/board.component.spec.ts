@@ -6,10 +6,10 @@ import { buildNewTask, addTask } from '../core/project/task-ops';
 import { BoardComponent } from './board.component';
 
 describe('BoardComponent', () => {
-  it('renders columns and cards only — no points, assigned, labels, or dates', async () => {
+  it('renders columns and cards only — no points node or assigned label', async () => {
     let project = createEmptyProject();
     const built = buildNewTask(
-      { title: 'Ship board', description: 'body', status: 'Todo', points: 5, assigned: 'Pat' },
+      { title: 'Ship board', description: 'body', status: 'Todo' },
       project.statuses,
     );
     expect(built.ok).toBe(true);
@@ -43,9 +43,7 @@ describe('BoardComponent', () => {
     expect(el.textContent).toContain('Todo');
     expect(el.textContent).toContain('Ship board');
     expect(el.querySelector('.task-card__points')).toBeNull();
-    expect(el.textContent).not.toContain('Pat');
-    expect(el.textContent).not.toMatch(/\b5\b/);
+    expect(el.querySelector('#task-assigned')).toBeNull();
     expect(el.textContent?.toLowerCase()).not.toContain('assigned');
-    expect(el.textContent?.toLowerCase()).not.toContain('label');
   });
 });
