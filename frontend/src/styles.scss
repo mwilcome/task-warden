@@ -1298,49 +1298,49 @@ body.is-task-dragging {
   }
 }
 
+app-board {
+  display: block;
+}
+
 @media (max-width: 40rem) {
   .app-header {
-    flex-wrap: wrap;
-    align-items: flex-start;
-    row-gap: 0.5rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
   }
 
-  .app-header > .row:last-child {
-    flex: 1 1 100%;
-    justify-content: flex-end;
+  .app-header__left {
+    flex: none;
+  }
+
+  .brand-wordmark--sm {
+    white-space: nowrap;
+  }
+
+  .app-header__file {
+    max-width: none;
   }
 
   .app-main--board {
-    overflow-x: auto;
+    min-width: 0;
     -webkit-overflow-scrolling: touch;
   }
 
   .board-wrap {
-    width: max-content;
-    min-width: 0;
     padding-inline: var(--space-3);
+    min-width: 0;
   }
 
   .board {
     justify-content: flex-start;
-    width: max-content;
     min-width: 0;
   }
 
-  .board-column {
-    flex: 0 0 85vw;
-    flex-shrink: 0;
-    width: 85vw;
-    min-width: 85vw;
+  .board-column:not(.board-column--add) {
+    flex: none;
+    width: calc(100vw - 3.5rem);
+    min-width: calc(100vw - 3.5rem);
     max-width: none;
-  }
-
-  .board-column--add {
-    flex: 0 0 12rem;
-    flex-shrink: 0;
-    width: 12rem;
-    min-width: 12rem;
-    max-width: 12rem;
   }
 }
 
