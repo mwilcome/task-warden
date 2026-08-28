@@ -9,12 +9,9 @@ import {
   viewChild,
 } from '@angular/core';
 import { form, FormField, disabled, required } from '@angular/forms/signals';
-import { ProjectSessionService } from '../core/project/project-session.service';
-import type { TwTask } from '../core/project/project.types';
+import { ProjectSessionService, type TaskPanelMode } from '../core/project/project-session.service';
 
-export type TaskPanelMode =
-  | { kind: 'create'; status: string }
-  | { kind: 'edit'; task: TwTask };
+export type { TaskPanelMode };
 
 type TaskPanelModel = {
   title: string;

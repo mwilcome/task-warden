@@ -15,6 +15,7 @@ export {
   ProjectSessionService,
   SAVE_FAILED_MESSAGE,
   type SessionActionResult,
+  type TaskPanelMode,
 } from './project-session.service';
 export { buildBoardColumns, type BoardColumn } from './board-model';
 export {

@@ -155,7 +155,3 @@
     <span class="task-card__title">{{ ghost.title }}</span>
   </div>
 }
-
-@if (panel(); as mode) {
-  <app-task-panel [mode]="mode" (closed)="onPanelClosed()" />
-}

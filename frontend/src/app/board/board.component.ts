@@ -12,10 +12,6 @@ import { FormsModule } from '@angular/forms';
 import { buildBoardColumns } from '../core/project/board-model';
 import { ProjectSessionService } from '../core/project/project-session.service';
 import type { TwTask } from '../core/project/project.types';
-import {
-  TaskPanelComponent,
-  type TaskPanelMode,
-} from '../task-panel/task-panel.component';
 
 const DND_STATUS_MIME = 'application/x-task-warden-status';
 /** Pixels of movement before a press becomes a task drag (keeps click-to-edit). */
@@ -53,14 +49,13 @@ type TaskGhost = {
  */
 @Component({
   selector: 'app-board',
-  imports: [TaskPanelComponent, FormsModule],
+  imports: [FormsModule],
   templateUrl: './board.component.html',
 })
 export class BoardComponent {
   private readonly session = inject(ProjectSessionService);
   private readonly destroyRef = inject(DestroyRef);
 
-  protected readonly panel = signal<TaskPanelMode | null>(null);
   protected readonly dragOverStatus = signal<string | null>(null);
   protected readonly draggingTaskId = signal<string | null>(null);
   protected readonly draggingStatus = signal<string | null>(null);
@@ -113,18 +108,14 @@ export class BoardComponent {
   }
 
   protected onAddTask(status: string): void {
-    this.panel.set({ kind: 'create', status });
+    this.session.openTaskPanel({ kind: 'create', status });
   }
 
   protected onCardKeydown(event: KeyboardEvent, task: TwTask): void {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      this.panel.set({ kind: 'edit', task: { ...task } });
+      this.session.openTaskPanel({ kind: 'edit', task: { ...task } });
     }
-  }
-
-  protected onPanelClosed(): void {
-    this.panel.set(null);
   }
 
   // --- Task pointer drag (desktop + mobile) --------------------------------
@@ -223,7 +214,7 @@ export class BoardComponent {
       const project = this.session.project();
       const task = project?.tasks.find((t) => t.id === taskId);
       if (task) {
-        this.panel.set({ kind: 'edit', task: { ...task } });
+        this.session.openTaskPanel({ kind: 'edit', task: { ...task } });
       }
       return;
     }

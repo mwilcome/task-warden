@@ -142,6 +142,40 @@ describe('ProjectSessionService', () => {
     expect(recents.recordBrowser).toHaveBeenCalled();
   });
 
+  it('deleteBrowserProject removes cache and recents then closes', async () => {
+    await session.newBrowserProject();
+    const id = session.project()!.id;
+    cache.remove.mockClear();
+    recents.remove.mockClear();
+
+    const result = await session.deleteBrowserProject();
+    expect(result.ok).toBe(true);
+    expect(cache.remove).toHaveBeenCalledWith(id);
+    expect(recents.remove).toHaveBeenCalledWith(id);
+    expect(session.hasWorkspace()).toBe(false);
+    expect(session.savedInBrowser()).toBe(false);
+    expect(session.project()).toBeNull();
+  });
+
+  it('deleteBrowserProject does not delete a disk project', async () => {
+    const handle = { name: 'x.tw.json' } as FileSystemFileHandle;
+    files.pickLocationAndWrite.mockResolvedValue({
+      handle,
+      fileName: 'x.tw.json',
+      lastModified: 1,
+    });
+    await session.newProject();
+    cache.remove.mockClear();
+    recents.remove.mockClear();
+
+    const result = await session.deleteBrowserProject();
+    expect(result.ok).toBe(false);
+    expect(cache.remove).not.toHaveBeenCalled();
+    expect(recents.remove).not.toHaveBeenCalled();
+    expect(session.hasFile()).toBe(true);
+    expect(session.hasWorkspace()).toBe(true);
+  });
+
   it('updateProject on a browser project persists to cache, not disk', async () => {
     await session.newBrowserProject();
     files.write.mockClear();

@@ -20,6 +20,7 @@ function sessionStub(overrides: Record<string, unknown> = {}) {
     recentProjects: signal([]).asReadonly(),
     recentFailure: signal(null).asReadonly(),
     dirtyFile: signal(null).asReadonly(),
+    taskPanel: signal(null).asReadonly(),
     newProject: vi.fn(),
     newBrowserProject: vi.fn(),
     openProject: vi.fn(),
@@ -36,6 +37,9 @@ function sessionStub(overrides: Record<string, unknown> = {}) {
     resolveDirtyReload: vi.fn(),
     resolveDirtyOverwrite: vi.fn(),
     setProjectName: vi.fn(),
+    openTaskPanel: vi.fn(),
+    closeTaskPanel: vi.fn(),
+    deleteBrowserProject: vi.fn(),
     ...overrides,
   };
 }
@@ -110,5 +114,89 @@ describe('HomeComponent', () => {
     expect(el.textContent).toContain('Saved in this browser');
     expect(el.textContent).toContain('Download');
     expect(el.textContent).not.toContain('Reload');
+  });
+
+  it('offers Delete this project for a browser-saved board', async () => {
+    const project = createEmptyProject();
+    await TestBed.configureTestingModule({
+      imports: [HomeComponent],
+      providers: [
+        {
+          provide: ProjectSessionService,
+          useValue: sessionStub({
+            project: signal(project).asReadonly(),
+            hasWorkspace: signal(true).asReadonly(),
+            hasFile: signal(false).asReadonly(),
+            savedInBrowser: signal(true).asReadonly(),
+          }),
+        },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(HomeComponent);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const trigger = el.querySelector('.projects-menu__trigger') as HTMLButtonElement;
+    trigger.click();
+    fixture.detectChanges();
+
+    expect(el.textContent).toContain('Delete this project');
+  });
+
+  it('does not offer Delete this project for a disk file', async () => {
+    const project = createEmptyProject();
+    await TestBed.configureTestingModule({
+      imports: [HomeComponent],
+      providers: [
+        {
+          provide: ProjectSessionService,
+          useValue: sessionStub({
+            project: signal(project).asReadonly(),
+            hasWorkspace: signal(true).asReadonly(),
+            hasFile: signal(true).asReadonly(),
+            savedInBrowser: signal(false).asReadonly(),
+            fileName: signal('demo.tw.json').asReadonly(),
+          }),
+        },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(HomeComponent);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const trigger = el.querySelector('.projects-menu__trigger') as HTMLButtonElement;
+    trigger.click();
+    fixture.detectChanges();
+
+    expect(el.textContent).not.toContain('Delete this project');
+  });
+
+  it('renders New task outside the board scrollport', async () => {
+    const project = createEmptyProject();
+    await TestBed.configureTestingModule({
+      imports: [HomeComponent],
+      providers: [
+        {
+          provide: ProjectSessionService,
+          useValue: sessionStub({
+            project: signal(project).asReadonly(),
+            hasWorkspace: signal(true).asReadonly(),
+            savedInBrowser: signal(true).asReadonly(),
+            taskPanel: signal({ kind: 'create', status: 'Todo' }).asReadonly(),
+          }),
+        },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(HomeComponent);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelector('app-task-panel')).toBeTruthy();
+    expect(el.querySelector('.app-main--board app-task-panel')).toBeNull();
+    expect(el.querySelector('#task-title')).toBeTruthy();
+    expect(el.textContent).toContain('Body');
+    expect(el.textContent).toContain('Add task');
+    expect(el.textContent).toContain('Cancel');
   });
 });

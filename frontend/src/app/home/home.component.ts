@@ -4,6 +4,7 @@ import { BoardComponent } from '../board/board.component';
 import { downloadProjectSchema } from '../core/project/project-schema';
 import { ProjectSessionService } from '../core/project/project-session.service';
 import { BrandMarkComponent } from './brand-mark.component';
+import { TaskPanelComponent } from '../task-panel/task-panel.component';
 
 /**
  * Board shell: create-or-open until a project exists, then the board.
@@ -11,7 +12,7 @@ import { BrandMarkComponent } from './brand-mark.component';
  */
 @Component({
   selector: 'app-home',
-  imports: [BoardComponent, FormsModule, BrandMarkComponent],
+  imports: [BoardComponent, FormsModule, BrandMarkComponent, TaskPanelComponent],
   templateUrl: './home.component.html',
   host: {
     '(document:click)': 'onDocumentClick($event)',
@@ -25,6 +26,7 @@ export class HomeComponent {
   protected readonly nameDraft = signal('');
   protected readonly nameError = signal<string | null>(null);
   protected readonly projectsMenuOpen = signal(false);
+  protected readonly confirmDeleteProject = signal(false);
 
   private readonly nameInput = viewChild<ElementRef<HTMLInputElement>>('nameInput');
   private readonly projectsMenuRoot = viewChild<ElementRef<HTMLElement>>('projectsMenu');
@@ -55,33 +57,36 @@ export class HomeComponent {
     }
     const root = this.projectsMenuRoot()?.nativeElement;
     if (root && !root.contains(event.target as Node)) {
-      this.projectsMenuOpen.set(false);
+      this.closeProjectsMenu();
     }
   }
 
   onEscape(): void {
     if (this.projectsMenuOpen()) {
-      this.projectsMenuOpen.set(false);
+      this.closeProjectsMenu();
     }
   }
 
   toggleProjectsMenu(event: Event): void {
     event.stopPropagation();
     this.projectsMenuOpen.update((open) => !open);
+    if (!this.projectsMenuOpen()) {
+      this.confirmDeleteProject.set(false);
+    }
   }
 
   async onNewProject(): Promise<void> {
-    this.projectsMenuOpen.set(false);
+    this.closeProjectsMenu();
     await this.session.newProject();
   }
 
   async onNewBrowserProject(): Promise<void> {
-    this.projectsMenuOpen.set(false);
+    this.closeProjectsMenu();
     await this.session.newBrowserProject();
   }
 
   async onOpenProject(): Promise<void> {
-    this.projectsMenuOpen.set(false);
+    this.closeProjectsMenu();
     if (this.session.fileSystemSupported) {
       await this.session.openProject();
       return;
@@ -100,12 +105,12 @@ export class HomeComponent {
   }
 
   async onOpenRecent(projectId: string): Promise<void> {
-    this.projectsMenuOpen.set(false);
+    this.closeProjectsMenu();
     await this.session.openRecent(projectId);
   }
 
   onDownloadProjectSchema(): void {
-    this.projectsMenuOpen.set(false);
+    this.closeProjectsMenu();
     downloadProjectSchema();
   }
 
@@ -115,6 +120,30 @@ export class HomeComponent {
 
   onCloseProject(): void {
     this.session.closeProject();
+  }
+
+  onRequestDeleteBrowserProject(event: Event): void {
+    event.stopPropagation();
+    this.confirmDeleteProject.set(true);
+  }
+
+  onCancelDeleteBrowserProject(event: Event): void {
+    event.stopPropagation();
+    this.confirmDeleteProject.set(false);
+  }
+
+  async onConfirmDeleteBrowserProject(): Promise<void> {
+    this.closeProjectsMenu();
+    await this.session.deleteBrowserProject();
+  }
+
+  onTaskPanelClosed(): void {
+    this.session.closeTaskPanel();
+  }
+
+  private closeProjectsMenu(): void {
+    this.projectsMenuOpen.set(false);
+    this.confirmDeleteProject.set(false);
   }
 
   async onRetrySave(): Promise<void> {

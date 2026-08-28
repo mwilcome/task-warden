@@ -7,7 +7,7 @@ import {
 import { RecentProjectsService } from '../fs/recent-projects.service';
 import { ProjectCacheService } from '../fs/project-cache.service';
 import { createEmptyProject } from './create-empty-project';
-import { INVALID_FILE_MESSAGE, type TwProject } from './project.types';
+import { INVALID_FILE_MESSAGE, type TwProject, type TwTask } from './project.types';
 import {
   addStatus,
   deleteStatus,
@@ -53,6 +53,10 @@ export type TaskPanelFields = {
   description: string;
 };
 
+export type TaskPanelMode =
+  | { kind: 'create'; status: string }
+  | { kind: 'edit'; task: TwTask };
+
 /**
  * Application service: open project session for the current browser tab.
  * Chrome/Edge: disk `.tw.json` via File System Access (auto-save).
@@ -73,6 +77,7 @@ export class ProjectSessionService {
   private readonly fileHandleSignal = signal<FileSystemFileHandle | null>(null);
   private readonly recentFailureSignal = signal<RecentOpenFailure | null>(null);
   private readonly dirtyFileSignal = signal<DirtyFile | null>(null);
+  private readonly taskPanelSignal = signal<TaskPanelMode | null>(null);
   /** lastModified of the open disk file after last successful read/write. */
   private diskStamp: number | null = null;
   private bootstrapStarted = false;
@@ -91,6 +96,7 @@ export class ProjectSessionService {
   readonly recentProjects = this.recents.list;
   readonly recentFailure = this.recentFailureSignal.asReadonly();
   readonly dirtyFile = this.dirtyFileSignal.asReadonly();
+  readonly taskPanel = this.taskPanelSignal.asReadonly();
 
   /**
    * Refresh recents on app load.
@@ -620,7 +626,28 @@ export class ProjectSessionService {
     this.saveErrorSignal.set(null);
     this.uiErrorSignal.set(null);
     this.dirtyFileSignal.set(null);
+    this.taskPanelSignal.set(null);
     this.diskStamp = null;
+  }
+
+  openTaskPanel(mode: TaskPanelMode): void {
+    this.taskPanelSignal.set(mode);
+  }
+
+  closeTaskPanel(): void {
+    this.taskPanelSignal.set(null);
+  }
+
+  async deleteBrowserProject(): Promise<SessionActionResult> {
+    const project = this.projectSignal();
+    if (!project || this.fileHandleSignal()) {
+      return { ok: false, message: 'No browser project is open.' };
+    }
+    const id = project.id;
+    await this.cache.remove(id);
+    await this.recents.remove(id);
+    this.closeProject();
+    return { ok: true };
   }
 
   clearUiError(): void {

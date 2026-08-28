@@ -1323,24 +1323,45 @@ app-board {
 
   .app-main--board {
     min-width: 0;
+    overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
 
   .board-wrap {
-    padding-inline: var(--space-3);
+    padding-inline: 0.5rem 0;
     min-width: 0;
   }
 
   .board {
     justify-content: flex-start;
     min-width: 0;
+    gap: var(--space-3);
   }
 
   .board-column:not(.board-column--add) {
     flex: none;
-    width: calc(100vw - 3.5rem);
-    min-width: calc(100vw - 3.5rem);
+    width: calc(100vw - 1.75rem);
+    min-width: calc(100vw - 1.75rem);
     max-width: none;
+  }
+
+  .task-panel-root {
+    align-items: stretch;
+  }
+
+  .task-panel {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-left: none;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .task-panel__header {
+    position: sticky;
+    top: 0;
   }
 }
 

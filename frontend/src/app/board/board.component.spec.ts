@@ -26,6 +26,7 @@ describe('BoardComponent', () => {
           useValue: {
             project: signal(project).asReadonly(),
             moveTask: vi.fn(),
+            openTaskPanel: vi.fn(),
             renameStatus: vi.fn(),
             addStatus: vi.fn(),
             deleteStatus: vi.fn(),

@@ -127,6 +127,40 @@
               Download schema (.md)
             </button>
 
+            @if (session.savedInBrowser()) {
+              <div class="projects-menu__sep" role="separator"></div>
+              @if (!confirmDeleteProject()) {
+                <button
+                  type="button"
+                  class="projects-menu__item"
+                  role="menuitem"
+                  (click)="onRequestDeleteBrowserProject($event)"
+                >
+                  Delete this project
+                </button>
+              } @else {
+                <div class="projects-menu__item">
+                  <p class="flush muted">Delete this project?</p>
+                  <div class="form-actions">
+                    <button
+                      type="button"
+                      class="btn btn-danger btn-sm"
+                      (click)="onConfirmDeleteBrowserProject()"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      (click)="onCancelDeleteBrowserProject($event)"
+                    >
+                      Keep
+                    </button>
+                  </div>
+                </div>
+              }
+            }
+
             <div class="projects-menu__sep" role="separator"></div>
             <p class="projects-menu__heading flush">Recent</p>
 
@@ -321,3 +355,7 @@
     </div>
   }
 </div>
+
+@if (session.taskPanel(); as mode) {
+  <app-task-panel [mode]="mode" (closed)="onTaskPanelClosed()" />
+}
