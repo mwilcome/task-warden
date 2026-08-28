@@ -1258,6 +1258,10 @@ body.is-task-dragging {
   touch-action: none;
 }
 
+body.is-task-dragging .app-main--board {
+  scroll-snap-type: none;
+}
+
 .task-card__title {
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-medium);
@@ -1324,6 +1328,8 @@ app-board {
   .app-main--board {
     min-width: 0;
     overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline-start: 0.5rem;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -1336,6 +1342,11 @@ app-board {
     justify-content: flex-start;
     min-width: 0;
     gap: var(--space-3);
+  }
+
+  .board-column {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
   }
 
   .board-column:not(.board-column--add) {
