@@ -95,7 +95,7 @@
           class="projects-menu__trigger"
           [attr.aria-expanded]="projectsMenuOpen()"
           aria-haspopup="menu"
-          [disabled]="session.busy()"
+          [disabled]="session.busy() && !session.hasWorkspace()"
           (click)="toggleProjectsMenu($event)"
         >
           Projects

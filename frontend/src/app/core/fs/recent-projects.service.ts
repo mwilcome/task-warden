@@ -1,5 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import type { TwProject } from '../project/project.types';
+import { openIndexedDb, withIdbTimeout } from './idb-timeout';
 
 const DB_NAME = 'task-warden';
 /** Recents: disk handles and browser-saved projects. */
@@ -39,7 +40,7 @@ export class RecentProjectsService {
   async refresh(): Promise<void> {
     try {
       const db = await this.openDb();
-      const rows = await this.getAll(db);
+      const rows = await withIdbTimeout(this.getAll(db));
       rows.sort((a, b) => b.openedAt.localeCompare(a.openedAt));
       this.listSignal.set(rows.slice(0, MAX_RECENTS).map((row) => this.toMeta(row)));
     } catch {
@@ -62,7 +63,7 @@ export class RecentProjectsService {
         openedAt: new Date().toISOString(),
         handle,
       };
-      await this.put(db, record);
+      await withIdbTimeout(this.put(db, record));
       await this.trim(db);
       await this.refresh();
     } catch {
@@ -73,7 +74,7 @@ export class RecentProjectsService {
   async recordBrowser(project: TwProject): Promise<void> {
     try {
       const db = await this.openDb();
-      const existing = await this.get(db, project.id);
+      const existing = await withIdbTimeout(this.get(db, project.id));
       const record: RecentProjectRecord = {
         id: project.id,
         name: project.name,
@@ -82,7 +83,7 @@ export class RecentProjectsService {
         openedAt: new Date().toISOString(),
         handle: existing?.handle,
       };
-      await this.put(db, record);
+      await withIdbTimeout(this.put(db, record));
       await this.trim(db);
       await this.refresh();
     } catch {
@@ -93,7 +94,7 @@ export class RecentProjectsService {
   async getHandle(projectId: string): Promise<FileSystemFileHandle | null> {
     try {
       const db = await this.openDb();
-      const row = await this.get(db, projectId);
+      const row = await withIdbTimeout(this.get(db, projectId));
       return row?.handle ?? null;
     } catch {
       return null;
@@ -103,7 +104,7 @@ export class RecentProjectsService {
   async getMeta(projectId: string): Promise<RecentProjectMeta | null> {
     try {
       const db = await this.openDb();
-      const row = await this.get(db, projectId);
+      const row = await withIdbTimeout(this.get(db, projectId));
       return row ? this.toMeta(row) : null;
     } catch {
       return null;
@@ -113,12 +114,15 @@ export class RecentProjectsService {
   async remove(projectId: string): Promise<void> {
     try {
       const db = await this.openDb();
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).delete(projectId);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
+      await withIdbTimeout(
+        new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(STORE, 'readwrite');
+          tx.objectStore(STORE).delete(projectId);
+          tx.oncomplete = () => resolve();
+          tx.onabort = () => reject(tx.error ?? new Error('IndexedDB abort'));
+          tx.onerror = () => reject(tx.error);
+        }),
+      );
       await this.refresh();
     } catch {
       await this.refresh();
@@ -145,16 +149,13 @@ export class RecentProjectsService {
     if (this.dbPromise) {
       return this.dbPromise;
     }
-    this.dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'));
-      req.onsuccess = () => resolve(req.result);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORE)) {
-          db.createObjectStore(STORE, { keyPath: 'id' });
-        }
-      };
+    this.dbPromise = openIndexedDb(DB_NAME, DB_VERSION, (db) => {
+      if (!db.objectStoreNames.contains(STORE)) {
+        db.createObjectStore(STORE, { keyPath: 'id' });
+      }
+    }).catch((error: unknown) => {
+      this.dbPromise = null;
+      throw error;
     });
     return this.dbPromise;
   }
@@ -165,6 +166,7 @@ export class RecentProjectsService {
       const req = tx.objectStore(STORE).getAll();
       req.onsuccess = () => resolve((req.result as RecentProjectRecord[]) ?? []);
       req.onerror = () => reject(req.error);
+      tx.onabort = () => reject(tx.error ?? new Error('IndexedDB abort'));
     });
   }
 
@@ -174,6 +176,7 @@ export class RecentProjectsService {
       const req = tx.objectStore(STORE).get(id);
       req.onsuccess = () => resolve(req.result as RecentProjectRecord | undefined);
       req.onerror = () => reject(req.error);
+      tx.onabort = () => reject(tx.error ?? new Error('IndexedDB abort'));
     });
   }
 
@@ -182,25 +185,29 @@ export class RecentProjectsService {
       const tx = db.transaction(STORE, 'readwrite');
       tx.objectStore(STORE).put(record);
       tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error ?? new Error('IndexedDB abort'));
       tx.onerror = () => reject(tx.error);
     });
   }
 
   private async trim(db: IDBDatabase): Promise<void> {
-    const rows = await this.getAll(db);
+    const rows = await withIdbTimeout(this.getAll(db));
     if (rows.length <= MAX_RECENTS) {
       return;
     }
     rows.sort((a, b) => b.openedAt.localeCompare(a.openedAt));
     const drop = rows.slice(MAX_RECENTS);
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite');
-      const store = tx.objectStore(STORE);
-      for (const row of drop) {
-        store.delete(row.id);
-      }
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
+    await withIdbTimeout(
+      new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        const store = tx.objectStore(STORE);
+        for (const row of drop) {
+          store.delete(row.id);
+        }
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(tx.error ?? new Error('IndexedDB abort'));
+        tx.onerror = () => reject(tx.error);
+      }),
+    );
   }
 }

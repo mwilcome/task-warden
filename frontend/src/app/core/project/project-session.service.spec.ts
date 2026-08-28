@@ -9,6 +9,7 @@ import { ProjectCacheService } from '../fs/project-cache.service';
 import { RecentProjectsService } from '../fs/recent-projects.service';
 import { createEmptyProject } from './create-empty-project';
 import { INVALID_FILE_MESSAGE, SCHEMA_VERSION } from './project.types';
+import { IDB_TIMEOUT_MS } from '../fs/idb-timeout';
 import {
   ProjectSessionService,
   SAVE_FAILED_MESSAGE,
@@ -140,6 +141,25 @@ describe('ProjectSessionService', () => {
     expect(files.pickLocationAndWrite).not.toHaveBeenCalled();
     expect(cache.put).toHaveBeenCalled();
     expect(recents.recordBrowser).toHaveBeenCalled();
+    expect(session.busy()).toBe(false);
+  });
+
+  it('newBrowserProject leaves busy false even if IndexedDB persist never settles', async () => {
+    cache.put.mockImplementation(() => new Promise(() => undefined));
+    recents.recordBrowser.mockImplementation(() => new Promise(() => undefined));
+    vi.useFakeTimers();
+    try {
+      const pending = session.newBrowserProject();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(IDB_TIMEOUT_MS);
+      const result = await pending;
+      expect(result.ok).toBe(true);
+      expect(session.busy()).toBe(false);
+      expect(session.savedInBrowser()).toBe(true);
+      expect(session.hasWorkspace()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('deleteBrowserProject removes cache and recents then closes', async () => {

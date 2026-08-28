@@ -6,6 +6,7 @@ import {
 } from '../fs/project-file.repository';
 import { RecentProjectsService } from '../fs/recent-projects.service';
 import { ProjectCacheService } from '../fs/project-cache.service';
+import { withIdbTimeout } from '../fs/idb-timeout';
 import { createEmptyProject } from './create-empty-project';
 import { INVALID_FILE_MESSAGE, type TwProject, type TwTask } from './project.types';
 import {
@@ -708,8 +709,10 @@ export class ProjectSessionService {
   }
 
   private async persistBrowser(project: TwProject): Promise<void> {
-    await this.cache.put(project, null);
-    await this.recents.recordBrowser(project);
+    await Promise.allSettled([
+      withIdbTimeout(this.cache.put(project, null)),
+      withIdbTimeout(this.recents.recordBrowser(project)),
+    ]);
   }
 
   private async attachFile(

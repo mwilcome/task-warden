@@ -143,6 +143,54 @@ describe('HomeComponent', () => {
     expect(el.textContent).toContain('Delete this project');
   });
 
+  it('keeps Projects enabled when a board is showing even if busy', async () => {
+    const project = createEmptyProject();
+    await TestBed.configureTestingModule({
+      imports: [HomeComponent],
+      providers: [
+        {
+          provide: ProjectSessionService,
+          useValue: sessionStub({
+            project: signal(project).asReadonly(),
+            hasWorkspace: signal(true).asReadonly(),
+            hasFile: signal(false).asReadonly(),
+            savedInBrowser: signal(true).asReadonly(),
+            busy: signal(true).asReadonly(),
+          }),
+        },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(HomeComponent);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const trigger = el.querySelector('.projects-menu__trigger') as HTMLButtonElement;
+    expect(trigger.disabled).toBe(false);
+    trigger.click();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Delete this project');
+  });
+
+  it('disables Projects on the landing screen while busy', async () => {
+    await TestBed.configureTestingModule({
+      imports: [HomeComponent],
+      providers: [
+        {
+          provide: ProjectSessionService,
+          useValue: sessionStub({
+            busy: signal(true).asReadonly(),
+          }),
+        },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(HomeComponent);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const trigger = el.querySelector('.projects-menu__trigger') as HTMLButtonElement;
+    expect(trigger.disabled).toBe(true);
+  });
+
   it('does not offer Delete this project for a disk file', async () => {
     const project = createEmptyProject();
     await TestBed.configureTestingModule({
