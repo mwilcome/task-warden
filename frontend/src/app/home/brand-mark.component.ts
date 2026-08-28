@@ -1,9 +1,6 @@
 import { Component, input } from '@angular/core';
 
-/**
- * TW badge — restored to pre-dark geometry (clip-path shield + original sizes).
- * Paint uses current slate-blue tokens; shape matches main.
- */
+/** TW badge. */
 @Component({
   selector: 'app-brand-mark',
   host: {

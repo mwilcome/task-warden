@@ -4,16 +4,11 @@ import {
   ProjectFileRepository,
   UserCancelledFilePickerError,
 } from '../fs/project-file.repository';
-import {
-  ProjectCacheService,
-  projectsContentEqual,
-} from '../fs/project-cache.service';
-import {
-  RecentProjectsService,
-  type RecentProjectMeta,
-} from '../fs/recent-projects.service';
+import { RecentProjectsService } from '../fs/recent-projects.service';
+import { ProjectCacheService } from '../fs/project-cache.service';
+import { withIdbTimeout } from '../fs/idb-timeout';
 import { createEmptyProject } from './create-empty-project';
-import { INVALID_FILE_MESSAGE, type TwProject } from './project.types';
+import { INVALID_FILE_MESSAGE, type TwProject, type TwTask } from './project.types';
 import {
   addStatus,
   deleteStatus,
@@ -29,12 +24,10 @@ import {
   removeTask,
   renameProject,
   replaceTask,
-  type CreateTaskInput,
-  type UpdateTaskInput,
 } from './task-ops';
-import { parseAndValidateProject } from './validate-project';
+import { parseAndValidateProject, validateProject } from './validate-project';
 
-/** Exact auto-save failure copy (MVP global rules / Story C). */
+/** Exact auto-save failure copy. */
 export const SAVE_FAILED_MESSAGE =
   'Save failed – changes are only in memory. Try again or refresh.';
 
@@ -42,7 +35,7 @@ export type SessionActionResult =
   | { ok: true }
   | { ok: false; message: string; cancelled?: boolean };
 
-/** Recoverable failure when opening a recent project (missing file, etc.). */
+/** Recoverable failure when opening a recent path. */
 export type RecentOpenFailure = {
   projectId: string;
   name: string;
@@ -51,18 +44,25 @@ export type RecentOpenFailure = {
   message: string;
 };
 
-/** Disk vs browser cache disagreement — user must choose. */
-export type CacheConflict = {
-  handle: FileSystemFileHandle;
+/** Disk changed under the open handle — reload or overwrite, no merge. */
+export type DirtyFile = {
   fileName: string;
-  disk: TwProject;
-  cache: TwProject;
 };
+
+export type TaskPanelFields = {
+  title: string;
+  description: string;
+};
+
+export type TaskPanelMode =
+  | { kind: 'create'; status: string }
+  | { kind: 'edit'; task: TwTask };
 
 /**
  * Application service: open project session for the current browser tab.
- * Always holds an in-memory project (draft board like Draw.io untitled page).
- * Auto-saves to disk when a file handle is attached; always updates browser cache.
+ * Chrome/Edge: disk `.tw.json` via File System Access (auto-save).
+ * New browser project: IndexedDB in-browser store (multiple projects, no file).
+ * Upload/download still writes a `.tw.json`.
  */
 @Injectable({ providedIn: 'root' })
 export class ProjectSessionService {
@@ -70,19 +70,17 @@ export class ProjectSessionService {
   private readonly recents = inject(RecentProjectsService);
   private readonly cache = inject(ProjectCacheService);
 
-  /** Always a real project so the board (empty swimlanes) can show. */
-  private readonly projectSignal = signal<TwProject>(createEmptyProject());
+  private readonly projectSignal = signal<TwProject | null>(null);
   private readonly fileNameSignal = signal<string | null>(null);
   private readonly saveErrorSignal = signal<string | null>(null);
   private readonly uiErrorSignal = signal<string | null>(null);
   private readonly busySignal = signal(false);
   private readonly fileHandleSignal = signal<FileSystemFileHandle | null>(null);
   private readonly recentFailureSignal = signal<RecentOpenFailure | null>(null);
-  private readonly cacheConflictSignal = signal<CacheConflict | null>(null);
-  /** Opened from IndexedDB without a live file handle (e.g. mobile / no FS Access). */
-  private readonly cacheOnlySignal = signal(false);
-  /** Last project summary for the open prompt (never auto-opened). */
-  private readonly lastProjectSignal = signal<RecentProjectMeta | null>(null);
+  private readonly dirtyFileSignal = signal<DirtyFile | null>(null);
+  private readonly taskPanelSignal = signal<TaskPanelMode | null>(null);
+  /** lastModified of the open disk file after last successful read/write. */
+  private diskStamp: number | null = null;
   private bootstrapStarted = false;
 
   readonly project = this.projectSignal.asReadonly();
@@ -90,27 +88,19 @@ export class ProjectSessionService {
   readonly saveError = this.saveErrorSignal.asReadonly();
   readonly uiError = this.uiErrorSignal.asReadonly();
   readonly busy = this.busySignal.asReadonly();
-  /** True when a disk file handle is attached (saved/opened). */
   readonly hasFile = computed(() => this.fileHandleSignal() !== null);
-  /**
-   * True when the open-project overlay should stay hidden:
-   * disk file attached, or user opened a browser-only session.
-   */
-  readonly hasWorkspace = computed(
-    () => this.fileHandleSignal() !== null || this.cacheOnlySignal(),
+  readonly hasWorkspace = computed(() => this.projectSignal() !== null);
+  readonly savedInBrowser = computed(
+    () => this.projectSignal() !== null && this.fileHandleSignal() === null,
   );
-  /** @deprecated Prefer hasFile / hasWorkspace. */
-  readonly hasProject = computed(() => this.hasFile());
   readonly fileSystemSupported = this.files.isSupported();
   readonly recentProjects = this.recents.list;
   readonly recentFailure = this.recentFailureSignal.asReadonly();
-  readonly cacheConflict = this.cacheConflictSignal.asReadonly();
-  readonly cacheOnly = this.cacheOnlySignal.asReadonly();
-  readonly lastProject = this.lastProjectSignal.asReadonly();
+  readonly dirtyFile = this.dirtyFileSignal.asReadonly();
+  readonly taskPanel = this.taskPanelSignal.asReadonly();
 
   /**
-   * On app load: refresh recents and resolve last-project label for the open prompt.
-   * Does **not** auto-open a workspace — user chooses New / Open / last / recent.
+   * Refresh recents on app load.
    */
   async bootstrap(): Promise<void> {
     if (this.bootstrapStarted) {
@@ -118,92 +108,30 @@ export class ProjectSessionService {
     }
     this.bootstrapStarted = true;
     await this.recents.refresh();
-    await this.refreshLastProjectHint();
-  }
-
-  /** Re-read last project id for the open-prompt button. */
-  async refreshLastProjectHint(): Promise<void> {
-    const lastId = this.cache.getLastProjectId();
-    if (!lastId) {
-      this.lastProjectSignal.set(null);
-      return;
-    }
-    const meta = await this.recents.getMeta(lastId);
-    if (meta) {
-      this.lastProjectSignal.set(meta);
-      return;
-    }
-    const cached = await this.cache.get(lastId);
-    if (cached?.project) {
-      this.lastProjectSignal.set({
-        id: cached.project.id,
-        name: cached.project.name,
-        fileName: cached.fileName,
-        source: 'browser',
-        openedAt: cached.cachedAt,
-      });
-      return;
-    }
-    this.lastProjectSignal.set(null);
   }
 
   /**
-   * Open the remembered last project (file or browser-only, based on recents source).
-   * Used from the open prompt — never runs automatically on load.
-   */
-  async openLastProject(): Promise<SessionActionResult> {
-    this.uiErrorSignal.set(null);
-    const lastId = this.cache.getLastProjectId() ?? this.lastProjectSignal()?.id;
-    if (!lastId) {
-      const message = 'No recent project to open.';
-      this.uiErrorSignal.set(message);
-      return { ok: false, message };
-    }
-    return this.openRecent(lastId);
-  }
-
-  /** Load a project from browser cache only (no disk handle). Caller manages busy. */
-  async openFromCache(projectId: string): Promise<SessionActionResult> {
-    this.uiErrorSignal.set(null);
-    this.cacheConflictSignal.set(null);
-    const cached = await this.cache.get(projectId);
-    if (!cached?.project) {
-      const message = 'No browser copy of that project was found.';
-      this.uiErrorSignal.set(message);
-      return { ok: false, message };
-    }
-    this.fileHandleSignal.set(null);
-    this.cacheOnlySignal.set(true);
-    this.projectSignal.set(cached.project);
-    this.fileNameSignal.set(cached.fileName);
-    this.saveErrorSignal.set(null);
-    this.uiErrorSignal.set(null);
-    await this.cache.put(cached.project, null);
-    await this.recents.recordBrowser(cached.project);
-    await this.refreshLastProjectHint();
-    return { ok: true };
-  }
-
-  /**
-   * New Project: create template in memory, prompt to save `.tw.json`, keep handle.
-   * If the user cancels the save dialog, no session is opened.
-   * Requires File System Access (Chrome/Edge desktop).
+   * New Project: Chrome writes `.tw.json` and keeps the handle.
+   * Without File System Access: New browser project (saved in this browser).
+   * Cancelled picker opens nothing.
    */
   async newProject(): Promise<SessionActionResult> {
     this.uiErrorSignal.set(null);
-    this.cacheConflictSignal.set(null);
+    this.dirtyFileSignal.set(null);
+
     if (!this.files.isSupported()) {
-      const message = new FileSystemUnsupportedError().message;
-      this.uiErrorSignal.set(message);
-      return { ok: false, message };
+      return this.newBrowserProject();
     }
 
     this.busySignal.set(true);
     try {
       const project = createEmptyProject();
       const suggested = `${this.slugFileName(project.name)}.tw.json`;
-      const { handle, fileName } = await this.files.pickLocationAndWrite(project, suggested);
-      await this.attachFile(handle, project, fileName);
+      const { handle, fileName, lastModified } = await this.files.pickLocationAndWrite(
+        project,
+        suggested,
+      );
+      await this.attachFile(handle, project, fileName, lastModified);
       return { ok: true };
     } catch (error) {
       if (error instanceof UserCancelledFilePickerError) {
@@ -218,25 +146,16 @@ export class ProjectSessionService {
   }
 
   /**
-   * New browser-only project: no disk file. Works in Safari/iPhone and any browser.
-   * Data is stored in this browser's cache only (not a .tw.json on disk).
+   * New browser project: saved in this browser (IndexedDB). No disk file.
    */
-  async newBrowserOnlyProject(): Promise<SessionActionResult> {
+  async newBrowserProject(): Promise<SessionActionResult> {
     this.uiErrorSignal.set(null);
-    this.cacheConflictSignal.set(null);
+    this.dirtyFileSignal.set(null);
     this.recentFailureSignal.set(null);
     this.busySignal.set(true);
     try {
       const project = createEmptyProject();
-      this.fileHandleSignal.set(null);
-      this.cacheOnlySignal.set(true);
-      this.projectSignal.set(project);
-      this.fileNameSignal.set(null);
-      this.saveErrorSignal.set(null);
-      this.uiErrorSignal.set(null);
-      await this.cache.put(project, null);
-      await this.recents.recordBrowser(project);
-      await this.refreshLastProjectHint();
+      await this.activateBrowser(project, null);
       return { ok: true };
     } catch (error) {
       const message = this.messageFrom(error);
@@ -248,11 +167,11 @@ export class ProjectSessionService {
   }
 
   /**
-   * Open Project: pick file, parse + validate, load into memory, keep handle.
+   * Open Project (Chrome/Edge picker). Invalid files are rejected.
    */
   async openProject(): Promise<SessionActionResult> {
     this.uiErrorSignal.set(null);
-    this.cacheConflictSignal.set(null);
+    this.dirtyFileSignal.set(null);
     if (!this.files.isSupported()) {
       const message = new FileSystemUnsupportedError().message;
       this.uiErrorSignal.set(message);
@@ -262,27 +181,11 @@ export class ProjectSessionService {
     this.busySignal.set(true);
     try {
       const opened = await this.files.pickAndRead();
-      const validation = parseAndValidateProject(opened.text);
-      if (!validation.ok) {
-        const message = validation.reason
-          ? `${validation.message}: ${validation.reason}`
-          : validation.message;
-        this.uiErrorSignal.set(message);
-        return { ok: false, message };
-      }
-
-      const pending = await this.maybeConflict(
-        opened.handle,
-        validation.project,
-        opened.fileName,
-      );
-      if (pending) {
-        return { ok: false, message: 'This file differs from the browser copy.' };
-      }
-
-      await this.attachFile(opened.handle, validation.project, opened.fileName);
-      await this.refreshLastProjectHint();
-      return { ok: true };
+      return await this.loadValidatedText(opened.text, {
+        handle: opened.handle,
+        fileName: opened.fileName,
+        lastModified: opened.lastModified,
+      });
     } catch (error) {
       if (error instanceof UserCancelledFilePickerError) {
         return { ok: false, message: error.message, cancelled: true };
@@ -295,20 +198,50 @@ export class ProjectSessionService {
     }
   }
 
+  /** Open from an uploaded File. Invalid files are rejected. */
+  async openUploadedFile(file: File): Promise<SessionActionResult> {
+    this.uiErrorSignal.set(null);
+    this.dirtyFileSignal.set(null);
+    this.busySignal.set(true);
+    try {
+      const text = await file.text();
+      return await this.loadValidatedText(text, { fileName: file.name || 'project.tw.json' });
+    } catch (error) {
+      const message = this.messageFrom(error);
+      this.uiErrorSignal.set(message);
+      return { ok: false, message };
+    } finally {
+      this.busySignal.set(false);
+    }
+  }
+
+  /** Download the open project as `.tw.json`. */
+  downloadProject(): SessionActionResult {
+    const project = this.projectSignal();
+    if (!project) {
+      const message = 'No project is open.';
+      this.uiErrorSignal.set(message);
+      return { ok: false, message };
+    }
+    const fileName = this.fileNameSignal() ?? `${this.slugFileName(project.name)}.tw.json`;
+    this.files.download(project, fileName);
+    this.fileNameSignal.set(fileName);
+    return { ok: true };
+  }
+
   /**
-   * Open a recent project (Projects menu / open prompt).
-   * Browser-only recents load from cache; file recents use the stored handle.
+   * Open a recent: browser-saved from cache, or a disk path (File System Access).
+   * Missing disk files are not opened from cache.
    */
   async openRecent(projectId: string): Promise<SessionActionResult> {
     this.uiErrorSignal.set(null);
     this.recentFailureSignal.set(null);
-    this.cacheConflictSignal.set(null);
+    this.dirtyFileSignal.set(null);
 
     const meta = await this.recents.getMeta(projectId);
     const handle = await this.recents.getHandle(projectId);
 
-    // Last opened as browser-only, or no handle: use browser cache.
-    if (meta?.source === 'browser' || !handle) {
+    if (meta?.source === 'browser') {
       this.busySignal.set(true);
       try {
         const fromCache = await this.openFromCache(projectId);
@@ -318,26 +251,17 @@ export class ProjectSessionService {
       } finally {
         this.busySignal.set(false);
       }
-      if (!meta && !handle) {
-        await this.setRecentFailure({
-          projectId,
-          name: 'Project',
-          fileName: '',
-          kind: 'missing',
-          message: 'That project was not found in this browser.',
-        });
-        return { ok: false, message: 'That project was not found in this browser.' };
-      }
-      if (meta?.source === 'browser') {
-        await this.setRecentFailure({
-          projectId,
-          name: meta.name,
-          fileName: '',
-          kind: 'missing',
-          message: 'No browser copy of that project was found.',
-        });
-        return { ok: false, message: 'No browser copy of that project was found.' };
-      }
+      await this.setRecentFailure({
+        projectId,
+        name: meta.name,
+        fileName: '',
+        kind: 'missing',
+        message: 'No browser copy of that project was found.',
+      });
+      return { ok: false, message: 'No browser copy of that project was found.' };
+    }
+
+    if (!handle) {
       await this.setRecentFailure({
         projectId,
         name: meta?.name ?? 'Project',
@@ -352,10 +276,6 @@ export class ProjectSessionService {
     try {
       const permitted = await this.ensureReadPermission(handle);
       if (!permitted) {
-        const fromCache = await this.openFromCache(projectId);
-        if (fromCache.ok) {
-          return fromCache;
-        }
         await this.setRecentFailure({
           projectId,
           name: meta?.name ?? 'Project',
@@ -365,44 +285,28 @@ export class ProjectSessionService {
         });
         return { ok: false, message: 'Permission to read that file was denied.' };
       }
-      const { text, fileName } = await this.files.readHandle(handle);
-      const validation = parseAndValidateProject(text);
-      if (!validation.ok) {
-        const message = validation.reason
-          ? `${validation.message}: ${validation.reason}`
-          : validation.message;
+      const opened = await this.files.readHandle(handle);
+      const result = await this.loadValidatedText(opened.text, {
+        handle,
+        fileName: opened.fileName,
+        lastModified: opened.lastModified,
+      });
+      if (!result.ok) {
         await this.setRecentFailure({
           projectId,
           name: meta?.name ?? 'Project',
-          fileName: meta?.fileName ?? '',
+          fileName: meta?.fileName ?? opened.fileName,
           kind: 'other',
-          message,
+          message: result.message,
         });
-        return { ok: false, message };
       }
-
-      const pending = await this.maybeConflict(handle, validation.project, fileName);
-      if (pending) {
-        this.recentFailureSignal.set(null);
-        return { ok: false, message: 'This file differs from the browser copy.' };
-      }
-
-      await this.attachFile(handle, validation.project, fileName);
-      this.recentFailureSignal.set(null);
-      await this.refreshLastProjectHint();
-      return { ok: true };
+      return result;
     } catch (error) {
       const kind = this.isMissingFileError(error) ? 'missing' : 'other';
       const message =
         kind === 'missing'
           ? 'The file may have been moved or deleted.'
           : this.messageFrom(error);
-      if (kind === 'missing') {
-        const fromCache = await this.openFromCache(projectId);
-        if (fromCache.ok) {
-          return fromCache;
-        }
-      }
       await this.setRecentFailure({
         projectId,
         name: meta?.name ?? 'Project',
@@ -420,7 +324,6 @@ export class ProjectSessionService {
     this.recentFailureSignal.set(null);
   }
 
-  /** Remove the failed recent entry from history. */
   async removeFailedRecent(): Promise<void> {
     const failure = this.recentFailureSignal();
     if (!failure) {
@@ -430,55 +333,42 @@ export class ProjectSessionService {
     this.recentFailureSignal.set(null);
   }
 
-  /** Open Project picker to recover a missing recent (new path). */
   async openFileForFailedRecent(): Promise<SessionActionResult> {
     const failure = this.recentFailureSignal();
     this.recentFailureSignal.set(null);
     const result = await this.openProject();
     if (result.ok) {
-      if (failure && this.projectSignal().id !== failure.projectId) {
+      if (failure && this.projectSignal()?.id !== failure.projectId) {
         await this.recents.remove(failure.projectId);
       }
       return result;
     }
-    if (failure && !this.cacheConflictSignal()) {
+    if (failure && !this.dirtyFileSignal()) {
       this.recentFailureSignal.set(failure);
     }
     return result;
   }
 
-  /** Use disk version when file and browser cache disagree. */
-  async resolveConflictUseDisk(): Promise<SessionActionResult> {
-    const conflict = this.cacheConflictSignal();
-    if (!conflict) {
-      return { ok: false, message: 'No conflict to resolve.' };
-    }
-    this.busySignal.set(true);
-    try {
-      await this.attachFile(conflict.handle, conflict.disk, conflict.fileName);
-      this.cacheConflictSignal.set(null);
-      return { ok: true };
-    } catch (error) {
-      const message = this.messageFrom(error);
-      this.uiErrorSignal.set(message);
-      return { ok: false, message };
-    } finally {
-      this.busySignal.set(false);
-    }
+  /** Reload the open disk file into memory (disk wins). */
+  async resolveDirtyReload(): Promise<SessionActionResult> {
+    this.dirtyFileSignal.set(null);
+    return this.reloadFromDisk();
   }
 
-  /** Use browser cache and write it back to the open file. */
-  async resolveConflictUseCache(): Promise<SessionActionResult> {
-    const conflict = this.cacheConflictSignal();
-    if (!conflict) {
-      return { ok: false, message: 'No conflict to resolve.' };
+  /** Overwrite the open disk file with in-memory board. */
+  async resolveDirtyOverwrite(): Promise<SessionActionResult> {
+    const handle = this.fileHandleSignal();
+    const project = this.projectSignal();
+    if (!handle || !project) {
+      return { ok: false, message: 'No project file is open.' };
     }
     this.busySignal.set(true);
     try {
-      await this.files.write(conflict.handle, conflict.cache);
-      await this.attachFile(conflict.handle, conflict.cache, conflict.fileName);
-      this.cacheConflictSignal.set(null);
+      await this.files.write(handle, project);
+      this.diskStamp = await this.files.getLastModified(handle);
+      this.dirtyFileSignal.set(null);
       this.saveErrorSignal.set(null);
+      await this.recents.recordFile(handle, project, this.fileNameSignal() ?? handle.name);
       return { ok: true };
     } catch {
       this.saveErrorSignal.set(SAVE_FAILED_MESSAGE);
@@ -488,79 +378,103 @@ export class ProjectSessionService {
     }
   }
 
-  dismissConflict(): void {
-    this.cacheConflictSignal.set(null);
-  }
-
-  /**
-   * Apply a pure mutation to the in-memory project.
-   * Auto-saves to disk when a file handle exists; always updates browser cache for real sessions.
-   */
   async updateProject(
     mutator: (current: TwProject) => TwProject,
   ): Promise<SessionActionResult> {
     const current = this.projectSignal();
+    if (!current) {
+      return { ok: false, message: 'No project is open.' };
+    }
     const next = mutator(structuredClone(current));
     this.projectSignal.set(next);
 
     const handle = this.fileHandleSignal();
-    if (handle) {
-      try {
-        await this.files.write(handle, next);
-        this.saveErrorSignal.set(null);
-      } catch {
-        this.saveErrorSignal.set(SAVE_FAILED_MESSAGE);
-        await this.cache.put(next, this.fileNameSignal());
-        return { ok: false, message: SAVE_FAILED_MESSAGE };
+    if (!handle) {
+      this.saveErrorSignal.set(null);
+      await this.persistBrowser(next);
+      return { ok: true };
+    }
+
+    try {
+      const dirty = await this.diskChanged(handle);
+      if (dirty) {
+        this.dirtyFileSignal.set({
+          fileName: this.fileNameSignal() ?? handle.name,
+        });
+        return { ok: false, message: 'This file changed on disk.' };
       }
+      await this.files.write(handle, next);
+      this.diskStamp = await this.files.getLastModified(handle);
+      this.saveErrorSignal.set(null);
+      await this.recents.recordFile(handle, next, this.fileNameSignal() ?? handle.name);
+      return { ok: true };
+    } catch {
+      this.saveErrorSignal.set(SAVE_FAILED_MESSAGE);
+      return { ok: false, message: SAVE_FAILED_MESSAGE };
     }
-
-    if (handle || this.cacheOnlySignal()) {
-      await this.cache.put(next, this.fileNameSignal());
-    }
-    if (this.cacheOnlySignal()) {
-      await this.recents.recordBrowser(next);
-    }
-
-    return { ok: true };
   }
 
-  /** Story F: create task in a column and auto-save. */
-  async createTask(input: CreateTaskInput): Promise<SessionActionResult> {
+  async createTask(input: {
+    title: string;
+    description?: string;
+    status: string;
+  }): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    const built = buildNewTask(input, current.statuses);
+    if (!current) {
+      return { ok: false, message: 'No project is open.' };
+    }
+    const built = buildNewTask(
+      {
+        title: input.title,
+        description: input.description,
+        status: input.status,
+      },
+      current.statuses,
+      current.tasks,
+    );
     if (!built.ok) {
       return { ok: false, message: built.reason };
     }
     return this.updateProject((p) => addTask(p, built.value));
   }
 
-  /** Story G: update task fields and auto-save. */
-  async saveTask(taskId: string, input: UpdateTaskInput): Promise<SessionActionResult> {
+  async saveTask(taskId: string, input: TaskPanelFields): Promise<SessionActionResult> {
     const current = this.projectSignal();
+    if (!current) {
+      return { ok: false, message: 'No project is open.' };
+    }
     const existing = findTask(current, taskId);
     if (!existing) {
       return { ok: false, message: 'Task not found.' };
     }
-    const updated = applyTaskUpdate(existing, input, current.statuses);
+    const updated = applyTaskUpdate(
+      existing,
+      {
+        title: input.title,
+        description: input.description,
+        status: existing.status,
+      },
+      current.statuses,
+    );
     if (!updated.ok) {
       return { ok: false, message: updated.reason };
     }
     return this.updateProject((p) => replaceTask(p, updated.value));
   }
 
-  /** Story H: delete task and auto-save. */
   async deleteTask(taskId: string): Promise<SessionActionResult> {
     const current = this.projectSignal();
-    if (!findTask(current, taskId)) {
+    if (!current || !findTask(current, taskId)) {
       return { ok: false, message: 'Task not found.' };
     }
     return this.updateProject((p) => removeTask(p, taskId));
   }
 
-  /** Story I: drag task to another column; auto-save. */
   async moveTask(taskId: string, newStatus: string): Promise<SessionActionResult> {
     const current = this.projectSignal();
+    if (!current) {
+      return { ok: false, message: 'No project is open.' };
+    }
     const moved = moveTaskToStatus(current, taskId, newStatus);
     if (!moved.ok) {
       return { ok: false, message: moved.reason };
@@ -571,25 +485,26 @@ export class ProjectSessionService {
     return this.updateProject(() => moved.value);
   }
 
-  /** Story J: rename project; auto-save. */
   async setProjectName(name: string): Promise<SessionActionResult> {
     const current = this.projectSignal();
+    if (!current) {
+      return { ok: false, message: 'No project is open.' };
+    }
     const renamed = renameProject(current, name);
     if (!renamed.ok) {
       return { ok: false, message: renamed.reason };
     }
-    if (renamed.value === current || renamed.value.name === current.name) {
-      if (renamed.value.name !== current.name) {
-        return this.updateProject(() => renamed.value);
-      }
+    if (renamed.value === current) {
       return { ok: true };
     }
     return this.updateProject(() => renamed.value);
   }
 
-  /** Story K: append status column. */
   async addStatus(name: string): Promise<SessionActionResult> {
     const current = this.projectSignal();
+    if (!current) {
+      return { ok: false, message: 'No project is open.' };
+    }
     const result = addStatus(current, name);
     if (!result.ok) {
       return { ok: false, message: result.reason };
@@ -597,9 +512,11 @@ export class ProjectSessionService {
     return this.updateProject(() => result.value);
   }
 
-  /** Story K: rename status + task status values. */
   async renameStatus(oldName: string, newName: string): Promise<SessionActionResult> {
     const current = this.projectSignal();
+    if (!current) {
+      return { ok: false, message: 'No project is open.' };
+    }
     const result = renameStatus(current, oldName, newName);
     if (!result.ok) {
       return { ok: false, message: result.reason };
@@ -610,9 +527,11 @@ export class ProjectSessionService {
     return this.updateProject(() => result.value);
   }
 
-  /** Story K: reorder statuses by index. */
   async reorderStatuses(fromIndex: number, toIndex: number): Promise<SessionActionResult> {
     const current = this.projectSignal();
+    if (!current) {
+      return { ok: false, message: 'No project is open.' };
+    }
     const result = reorderStatuses(current, fromIndex, toIndex);
     if (!result.ok) {
       return { ok: false, message: result.reason };
@@ -623,9 +542,11 @@ export class ProjectSessionService {
     return this.updateProject(() => result.value);
   }
 
-  /** Story K: delete empty status only. */
   async deleteStatus(name: string): Promise<SessionActionResult> {
     const current = this.projectSignal();
+    if (!current) {
+      return { ok: false, message: 'No project is open.' };
+    }
     const result = deleteStatus(current, name);
     if (!result.ok) {
       return { ok: false, message: result.reason };
@@ -633,17 +554,23 @@ export class ProjectSessionService {
     return this.updateProject(() => result.value);
   }
 
-  /** Retry writing the current in-memory project to the open handle. */
   async retrySave(): Promise<SessionActionResult> {
     const current = this.projectSignal();
     const handle = this.fileHandleSignal();
-    if (!handle) {
+    if (!handle || !current) {
       return { ok: false, message: 'No project file is open.' };
     }
     try {
+      const dirty = await this.diskChanged(handle);
+      if (dirty) {
+        this.dirtyFileSignal.set({
+          fileName: this.fileNameSignal() ?? handle.name,
+        });
+        return { ok: false, message: 'This file changed on disk.' };
+      }
       await this.files.write(handle, current);
+      this.diskStamp = await this.files.getLastModified(handle);
       this.saveErrorSignal.set(null);
-      await this.cache.put(current, this.fileNameSignal());
       return { ok: true };
     } catch {
       this.saveErrorSignal.set(SAVE_FAILED_MESSAGE);
@@ -652,10 +579,8 @@ export class ProjectSessionService {
   }
 
   /**
-   * Re-read the open file handle from disk, validate, replace memory and cache.
-   * Disk always wins — no browser-vs-file choice (user asked to reload from disk).
+   * Re-read the open file handle from disk, validate, replace memory.
    * On invalid file or I/O error: keep previous in-memory project, set uiError.
-   * Save failures stay on the save banner; missing files use recovery UI, not this path.
    */
   async reloadFromDisk(): Promise<SessionActionResult> {
     const handle = this.fileHandleSignal();
@@ -667,10 +592,10 @@ export class ProjectSessionService {
 
     this.busySignal.set(true);
     this.uiErrorSignal.set(null);
-    this.cacheConflictSignal.set(null);
+    this.dirtyFileSignal.set(null);
     try {
-      const { text, fileName } = await this.files.readHandle(handle);
-      const validation = parseAndValidateProject(text);
+      const opened = await this.files.readHandle(handle);
+      const validation = parseAndValidateProject(opened.text);
       if (!validation.ok) {
         const message = validation.reason
           ? `${validation.message}: ${validation.reason}`
@@ -679,7 +604,12 @@ export class ProjectSessionService {
         return { ok: false, message };
       }
 
-      await this.attachFile(this.fileHandleSignal()!, validation.project, fileName);
+      await this.attachFile(
+        this.fileHandleSignal()!,
+        validation.project,
+        opened.fileName,
+        opened.lastModified,
+      );
       return { ok: true };
     } catch (error) {
       const message = this.messageFrom(error);
@@ -690,44 +620,127 @@ export class ProjectSessionService {
     }
   }
 
-  /** Detach file handle and reset to a fresh empty draft board (page stays visible). */
   closeProject(): void {
     this.fileHandleSignal.set(null);
-    this.cacheOnlySignal.set(false);
-    this.projectSignal.set(createEmptyProject());
+    this.projectSignal.set(null);
     this.fileNameSignal.set(null);
     this.saveErrorSignal.set(null);
     this.uiErrorSignal.set(null);
-    this.cacheConflictSignal.set(null);
+    this.dirtyFileSignal.set(null);
+    this.taskPanelSignal.set(null);
+    this.diskStamp = null;
+  }
+
+  openTaskPanel(mode: TaskPanelMode): void {
+    this.taskPanelSignal.set(mode);
+  }
+
+  closeTaskPanel(): void {
+    this.taskPanelSignal.set(null);
+  }
+
+  async deleteBrowserProject(): Promise<SessionActionResult> {
+    const project = this.projectSignal();
+    if (!project || this.fileHandleSignal()) {
+      return { ok: false, message: 'No browser project is open.' };
+    }
+    const id = project.id;
+    await this.cache.remove(id);
+    await this.recents.remove(id);
+    this.closeProject();
+    return { ok: true };
   }
 
   clearUiError(): void {
     this.uiErrorSignal.set(null);
   }
 
-  /**
-   * If browser cache exists for this project id and content differs, park conflict and return true.
-   * Otherwise return false (caller may attach).
-   */
-  private async maybeConflict(
-    handle: FileSystemFileHandle,
-    disk: TwProject,
-    fileName: string,
-  ): Promise<boolean> {
-    const cached = await this.cache.get(disk.id);
+  private async loadValidatedText(
+    text: string,
+    dest:
+      | { handle: FileSystemFileHandle; fileName: string; lastModified: number }
+      | { fileName: string },
+  ): Promise<SessionActionResult> {
+    const validation = parseAndValidateProject(text);
+    if (!validation.ok) {
+      const message = validation.reason
+        ? `${validation.message}: ${validation.reason}`
+        : validation.message;
+      this.uiErrorSignal.set(message);
+      return { ok: false, message };
+    }
+    if ('handle' in dest) {
+      await this.attachFile(dest.handle, validation.project, dest.fileName, dest.lastModified);
+    } else {
+      await this.activateBrowser(validation.project, dest.fileName);
+    }
+    return { ok: true };
+  }
+
+  /** Load a project from the in-browser store. Caller manages busy. */
+  private async openFromCache(projectId: string): Promise<SessionActionResult> {
+    const cached = await this.cache.get(projectId);
     if (!cached?.project) {
+      const message = 'No browser copy of that project was found.';
+      this.uiErrorSignal.set(message);
+      return { ok: false, message };
+    }
+    const validation = validateProject(cached.project);
+    if (!validation.ok) {
+      const message = validation.reason
+        ? `${validation.message}: ${validation.reason}`
+        : validation.message;
+      this.uiErrorSignal.set(message);
+      return { ok: false, message };
+    }
+    await this.activateBrowser(validation.project, cached.fileName);
+    return { ok: true };
+  }
+
+  private async activateBrowser(project: TwProject, fileName: string | null): Promise<void> {
+    this.fileHandleSignal.set(null);
+    this.diskStamp = null;
+    this.projectSignal.set(project);
+    this.fileNameSignal.set(fileName);
+    this.saveErrorSignal.set(null);
+    this.uiErrorSignal.set(null);
+    this.dirtyFileSignal.set(null);
+    await this.persistBrowser(project);
+  }
+
+  private async persistBrowser(project: TwProject): Promise<void> {
+    await Promise.allSettled([
+      withIdbTimeout(this.cache.put(project, null)),
+      withIdbTimeout(this.recents.recordBrowser(project)),
+    ]);
+  }
+
+  private async attachFile(
+    handle: FileSystemFileHandle,
+    project: TwProject,
+    fileName: string,
+    lastModified: number,
+  ): Promise<void> {
+    this.fileHandleSignal.set(handle);
+    this.diskStamp = lastModified;
+    this.projectSignal.set(project);
+    this.fileNameSignal.set(fileName);
+    this.saveErrorSignal.set(null);
+    this.uiErrorSignal.set(null);
+    this.dirtyFileSignal.set(null);
+    await this.recents.recordFile(handle, project, fileName);
+  }
+
+  private async diskChanged(handle: FileSystemFileHandle): Promise<boolean> {
+    if (this.diskStamp === null) {
       return false;
     }
-    if (projectsContentEqual(cached.project, disk)) {
+    try {
+      const stamp = await this.files.getLastModified(handle);
+      return stamp !== this.diskStamp;
+    } catch {
       return false;
     }
-    this.cacheConflictSignal.set({
-      handle,
-      fileName,
-      disk,
-      cache: cached.project,
-    });
-    return true;
   }
 
   private async setRecentFailure(failure: RecentOpenFailure): Promise<void> {
@@ -747,22 +760,6 @@ export class ProjectSessionService {
       /not found/i.test(message) ||
       /no longer exists/i.test(message)
     );
-  }
-
-  private async attachFile(
-    handle: FileSystemFileHandle,
-    project: TwProject,
-    fileName: string,
-  ): Promise<void> {
-    this.fileHandleSignal.set(handle);
-    this.cacheOnlySignal.set(false);
-    this.projectSignal.set(project);
-    this.fileNameSignal.set(fileName);
-    this.saveErrorSignal.set(null);
-    this.uiErrorSignal.set(null);
-    await this.recents.recordFile(handle, project, fileName);
-    await this.cache.put(project, fileName);
-    await this.refreshLastProjectHint();
   }
 
   private async ensureReadPermission(handle: FileSystemFileHandle): Promise<boolean> {

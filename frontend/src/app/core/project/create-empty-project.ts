@@ -5,7 +5,7 @@ import {
   SCHEMA_VERSION,
   type TwProject,
 } from './project.types';
-import { createUuidV4 } from './uuid';
+import { createProjectId } from './ids';
 
 /**
  * Returns a brand-new valid Task Warden project.
@@ -14,11 +14,8 @@ import { createUuidV4 } from './uuid';
 export function createEmptyProject(): TwProject {
   return {
     version: SCHEMA_VERSION,
-    id: createUuidV4(),
+    id: createProjectId(),
     name: DEFAULT_PROJECT_NAME,
-    owner: null,
-    startDate: null,
-    endDate: null,
     statuses: [...DEFAULT_STATUSES],
     aiInstructions: AI_INSTRUCTIONS,
     tasks: [],

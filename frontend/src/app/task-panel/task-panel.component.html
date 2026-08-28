@@ -15,77 +15,26 @@
       </button>
     </header>
 
-    <form class="task-panel__body stack" (ngSubmit)="onSubmit()">
+    <form class="task-panel__body stack" (submit)="onSubmit($event)">
       <div class="field">
         <label for="task-title">Title</label>
         <input
           id="task-title"
           #titleInput
-          name="title"
           type="text"
-          required
           autocomplete="off"
-          [ngModel]="title()"
-          (ngModelChange)="title.set($event)"
-          [disabled]="saving()"
+          [formField]="taskForm.title"
         />
       </div>
 
       <div class="field">
-        <label for="task-description">Description</label>
+        <label for="task-description">Body</label>
         <textarea
           id="task-description"
-          name="description"
           rows="4"
-          [ngModel]="description()"
-          (ngModelChange)="description.set($event)"
-          [disabled]="saving()"
+          [formField]="taskForm.description"
         ></textarea>
       </div>
-
-      <div class="field">
-        <label for="task-points">Points</label>
-        <input
-          id="task-points"
-          name="points"
-          type="text"
-          inputmode="numeric"
-          placeholder="Optional"
-          [ngModel]="pointsText()"
-          (ngModelChange)="pointsText.set($event)"
-          [disabled]="saving()"
-        />
-      </div>
-
-      <div class="field">
-        <label for="task-assigned">Assigned</label>
-        <input
-          id="task-assigned"
-          name="assigned"
-          type="text"
-          placeholder="Optional"
-          [ngModel]="assigned()"
-          (ngModelChange)="assigned.set($event)"
-          [disabled]="saving()"
-        />
-      </div>
-
-      @if (mode().kind === 'edit') {
-        <div class="field">
-          <label for="task-status">Status</label>
-          <select
-            id="task-status"
-            name="status"
-            [ngModel]="status()"
-            (ngModelChange)="status.set($event)"
-            [disabled]="saving()"
-          >
-            @for (s of statuses; track s) {
-              <option [value]="s">{{ s }}</option>
-            }
-          </select>
-        </div>
-      }
 
       @if (formError(); as err) {
         <div class="alert alert-error" role="alert">{{ err }}</div>

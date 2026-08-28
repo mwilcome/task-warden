@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import type { TwProject } from '../project/project.types';
+import { openIndexedDb, withIdbTimeout } from './idb-timeout';
 
 const DB_NAME = 'task-warden-cache';
 const DB_VERSION = 1;
@@ -15,7 +16,8 @@ export interface CachedProjectRecord {
 
 /**
  * Local full-project JSON cache (IndexedDB) + last-project id (localStorage).
- * Browser convenience only; disk `.tw.json` remains the AI source of truth when present.
+ * Used for New browser project / saved in this browser. Disk `.tw.json` is
+ * the source of truth when a file handle is open. Last-id is not auto-restored.
  */
 @Injectable({ providedIn: 'root' })
 export class ProjectCacheService {
@@ -50,7 +52,7 @@ export class ProjectCacheService {
         fileName,
         cachedAt: new Date().toISOString(),
       };
-      await this.idbPut(db, record);
+      await withIdbTimeout(this.idbPut(db, record));
       this.setLastProjectId(project.id);
     } catch {
       /* cache is best-effort */
@@ -60,7 +62,7 @@ export class ProjectCacheService {
   async get(projectId: string): Promise<CachedProjectRecord | null> {
     try {
       const db = await this.openDb();
-      return (await this.idbGet(db, projectId)) ?? null;
+      return (await withIdbTimeout(this.idbGet(db, projectId))) ?? null;
     } catch {
       return null;
     }
@@ -69,12 +71,15 @@ export class ProjectCacheService {
   async remove(projectId: string): Promise<void> {
     try {
       const db = await this.openDb();
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).delete(projectId);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
+      await withIdbTimeout(
+        new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(STORE, 'readwrite');
+          tx.objectStore(STORE).delete(projectId);
+          tx.oncomplete = () => resolve();
+          tx.onabort = () => reject(tx.error ?? new Error('IndexedDB abort'));
+          tx.onerror = () => reject(tx.error);
+        }),
+      );
       if (this.getLastProjectId() === projectId) {
         this.setLastProjectId(null);
       }
@@ -87,16 +92,13 @@ export class ProjectCacheService {
     if (this.dbPromise) {
       return this.dbPromise;
     }
-    this.dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'));
-      req.onsuccess = () => resolve(req.result);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORE)) {
-          db.createObjectStore(STORE, { keyPath: 'id' });
-        }
-      };
+    this.dbPromise = openIndexedDb(DB_NAME, DB_VERSION, (db) => {
+      if (!db.objectStoreNames.contains(STORE)) {
+        db.createObjectStore(STORE, { keyPath: 'id' });
+      }
+    }).catch((error: unknown) => {
+      this.dbPromise = null;
+      throw error;
     });
     return this.dbPromise;
   }
@@ -107,6 +109,7 @@ export class ProjectCacheService {
       const req = tx.objectStore(STORE).get(id);
       req.onsuccess = () => resolve(req.result as CachedProjectRecord | undefined);
       req.onerror = () => reject(req.error);
+      tx.onabort = () => reject(tx.error ?? new Error('IndexedDB abort'));
     });
   }
 
@@ -115,31 +118,8 @@ export class ProjectCacheService {
       const tx = db.transaction(STORE, 'readwrite');
       tx.objectStore(STORE).put(record);
       tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error ?? new Error('IndexedDB abort'));
       tx.onerror = () => reject(tx.error);
     });
   }
-}
-
-/** Stable compare for conflict detection (same project content; key-order safe). */
-export function projectsContentEqual(a: TwProject, b: TwProject): boolean {
-  return stableStringify(a) === stableStringify(b);
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(sortKeysDeep(value));
-}
-
-function sortKeysDeep(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortKeysDeep);
-  }
-  if (value !== null && typeof value === 'object') {
-    const obj = value as Record<string, unknown>;
-    const out: Record<string, unknown> = {};
-    for (const key of Object.keys(obj).sort()) {
-      out[key] = sortKeysDeep(obj[key]);
-    }
-    return out;
-  }
-  return value;
 }

@@ -65,7 +65,6 @@
   --shadow-brand: 0 8px 24px rgb(16 24 40 / 0.08);
 
   /* Layout */
-  --content-max: 40rem;
   --shell-max: 72rem;
 }
 
@@ -141,7 +140,6 @@ a {
   gap: var(--space-2);
 }
 
-/* Badge: exact pre-dark geometry & sizes (clip-path shield from main) */
 app-brand-mark {
   display: inline-flex;
   flex-shrink: 0;
@@ -156,7 +154,6 @@ app-brand-mark {
   flex-shrink: 0;
   background: var(--color-primary);
   color: #fff;
-  /* Keystone / shield silhouette — same polygon as main */
   clip-path: polygon(50% 0%, 100% 12%, 100% 68%, 50% 100%, 0% 68%, 0% 12%);
 }
 
@@ -217,38 +214,11 @@ app-brand-mark {
   flex-direction: column;
 }
 
-.page-center {
-  min-height: 100dvh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-5);
-}
-
-.container {
-  width: 100%;
-  max-width: var(--content-max);
-  margin-inline: auto;
-  padding-inline: var(--space-4);
-}
-
 .container-wide {
   width: 100%;
   max-width: var(--shell-max);
   margin-inline: auto;
   padding-inline: var(--space-4);
-}
-
-.stack {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.stack-sm {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
 }
 
 .row {
@@ -400,7 +370,7 @@ app-brand-mark {
   border: 1px solid color-mix(in srgb, var(--color-warning) 25%, transparent);
 }
 
-/* Persistent non-blocking save failure (Story C) */
+/* Persistent non-blocking save failure */
 .save-banner {
   position: sticky;
   top: 0;
@@ -469,8 +439,8 @@ app-brand-mark {
   flex-shrink: 0;
 }
 
-/* Disk vs browser cache conflict */
-.cache-conflict {
+/* Disk file changed under the open handle — reload or overwrite */
+.dirty-file {
   position: sticky;
   top: 0;
   z-index: 55;
@@ -485,7 +455,7 @@ app-brand-mark {
   border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 22%, var(--color-border));
 }
 
-.cache-conflict__text {
+.dirty-file__text {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -493,22 +463,22 @@ app-brand-mark {
   flex: 1;
 }
 
-.cache-conflict__title {
+.dirty-file__title {
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-sm);
   color: var(--color-warning);
 }
 
-.cache-conflict__body {
+.dirty-file__body {
   font-size: var(--font-size-sm);
   color: var(--color-text);
 }
 
-.cache-conflict__meta {
+.dirty-file__meta {
   font-size: 0.75rem;
 }
 
-.cache-conflict__actions {
+.dirty-file__actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -709,7 +679,7 @@ app-brand-mark {
   font-weight: var(--font-weight-medium);
 }
 
-/* --- Board stage + open prompt overlay (Draw.io-style page behind) -------- */
+/* --- Board stage + create-or-open (empty board is blocked until a project exists) */
 
 .board-stage {
   position: relative;
@@ -728,6 +698,12 @@ app-brand-mark {
   justify-content: center;
   padding: var(--space-5);
   pointer-events: none;
+}
+
+.open-prompt-layer--page {
+  position: relative;
+  flex: 1;
+  pointer-events: auto;
 }
 
 .open-prompt-backdrop {
@@ -782,18 +758,12 @@ app-brand-mark {
   margin: 0;
 }
 
-.open-prompt__guide {
+.open-prompt__schema {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   padding-top: var(--space-2);
   border-top: 1px solid var(--color-border);
-}
-
-.open-prompt__guide-help {
-  font-size: var(--font-size-sm);
-  line-height: 1.4;
-  text-align: center;
 }
 
 .open-prompt__recent {
@@ -888,15 +858,6 @@ app-brand-mark {
   white-space: nowrap;
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  align-items: flex-start;
-}
-
-/* --- Forms (ready for later stories) -------------------------------------- */
-
 label {
   display: block;
   font-size: var(--font-size-sm);
@@ -937,18 +898,6 @@ textarea {
 .field-error {
   font-size: var(--font-size-sm);
   color: var(--color-danger);
-}
-
-.badge {
-  display: inline-block;
-  font-size: 0.75rem;
-  font-weight: var(--font-weight-semibold);
-  line-height: 1;
-  padding: 0.2rem 0.45rem;
-  border-radius: 999px;
-  vertical-align: middle;
-  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-bg));
-  color: var(--color-primary);
 }
 
 /* --- Board ---------------------------------------------------------------- */
@@ -1309,17 +1258,16 @@ body.is-task-dragging {
   touch-action: none;
 }
 
+body.is-task-dragging .app-main--board {
+  scroll-snap-type: none;
+}
+
 .task-card__title {
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-medium);
   color: var(--color-text);
   line-height: 1.35;
   word-break: break-word;
-}
-
-.task-card__points {
-  flex-shrink: 0;
-  margin-top: 0.1rem;
 }
 
 .board-column__add {
@@ -1354,19 +1302,81 @@ body.is-task-dragging {
   }
 }
 
+app-board {
+  display: block;
+}
+
 @media (max-width: 40rem) {
+  .app-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .app-header__left {
+    flex: none;
+  }
+
+  .brand-wordmark--sm {
+    white-space: nowrap;
+  }
+
+  .app-header__file {
+    max-width: none;
+  }
+
+  .app-main--board {
+    min-width: 0;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline-start: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .board-wrap {
-    padding-inline: var(--space-3);
+    padding-inline: 0.5rem 0;
+    min-width: 0;
+  }
+
+  .board {
+    justify-content: flex-start;
+    min-width: 0;
+    gap: var(--space-3);
   }
 
   .board-column {
-    flex-basis: 14rem;
-    width: 14rem;
-    min-width: 14rem;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+
+  .board-column:not(.board-column--add) {
+    flex: none;
+    width: calc(100vw - 1.75rem);
+    min-width: calc(100vw - 1.75rem);
+    max-width: none;
+  }
+
+  .task-panel-root {
+    align-items: stretch;
+  }
+
+  .task-panel {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-left: none;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .task-panel__header {
+    position: sticky;
+    top: 0;
   }
 }
 
-/* --- Task panel (Stories F / G / H) -------------------------------------- */
+/* --- Task panel ---------------------------------------------------------- */
 
 .task-panel-root {
   position: fixed;

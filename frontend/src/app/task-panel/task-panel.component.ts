@@ -8,22 +8,23 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { ProjectSessionService } from '../core/project/project-session.service';
-import type { TwTask } from '../core/project/project.types';
+import { form, FormField, disabled, required } from '@angular/forms/signals';
+import { ProjectSessionService, type TaskPanelMode } from '../core/project/project-session.service';
 
-export type TaskPanelMode =
-  | { kind: 'create'; status: string }
-  | { kind: 'edit'; task: TwTask };
+export type { TaskPanelMode };
+
+type TaskPanelModel = {
+  title: string;
+  description: string;
+};
 
 /**
- * Side panel for create (F) / edit (G) / delete (H).
- * Story M: Escape cancels, Enter submits form, title autofocus.
+ * Side panel: title + body + confirm-delete. Signal Forms.
  * Styles: global classes only (src/styles.scss).
  */
 @Component({
   selector: 'app-task-panel',
-  imports: [FormsModule],
+  imports: [FormField],
   templateUrl: './task-panel.component.html',
 })
 export class TaskPanelComponent {
@@ -32,11 +33,13 @@ export class TaskPanelComponent {
   readonly mode = input.required<TaskPanelMode>();
   readonly closed = output<void>();
 
-  protected readonly title = signal('');
-  protected readonly description = signal('');
-  protected readonly pointsText = signal('');
-  protected readonly assigned = signal('');
-  protected readonly status = signal('');
+  protected readonly model = signal<TaskPanelModel>({ title: '', description: '' });
+  protected readonly taskForm = form(this.model, (schemaPath) => {
+    required(schemaPath.title, { message: 'Title is required.' });
+    disabled(schemaPath.title, { when: () => this.saving() });
+    disabled(schemaPath.description, { when: () => this.saving() });
+  });
+
   protected readonly formError = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly confirmDelete = signal(false);
@@ -49,17 +52,9 @@ export class TaskPanelComponent {
       this.formError.set(null);
       this.confirmDelete.set(false);
       if (m.kind === 'create') {
-        this.title.set('');
-        this.description.set('');
-        this.pointsText.set('');
-        this.assigned.set('');
-        this.status.set(m.status);
+        this.model.set({ title: '', description: '' });
       } else {
-        this.title.set(m.task.title);
-        this.description.set(m.task.description);
-        this.pointsText.set(m.task.points === null ? '' : String(m.task.points));
-        this.assigned.set(m.task.assigned ?? '');
-        this.status.set(m.task.status);
+        this.model.set({ title: m.task.title, description: m.task.description });
       }
       queueMicrotask(() => {
         this.titleInput()?.nativeElement.focus();
@@ -72,10 +67,6 @@ export class TaskPanelComponent {
 
   protected get panelTitle(): string {
     return this.mode().kind === 'create' ? 'New task' : 'Edit task';
-  }
-
-  protected get statuses(): string[] {
-    return this.session.project()?.statuses ?? [];
   }
 
   protected onBackdropClick(): void {
@@ -100,37 +91,31 @@ export class TaskPanelComponent {
     this.closed.emit();
   }
 
-  protected async onSubmit(): Promise<void> {
+  protected async onSubmit(event: Event): Promise<void> {
+    event.preventDefault();
     this.formError.set(null);
-    const points = this.parsePoints(this.pointsText());
-    if (points === 'invalid') {
-      this.formError.set('Points must be an integer ≥ 0 or empty.');
+    if (this.taskForm().invalid()) {
+      const first = this.taskForm.title().errors()[0];
+      this.formError.set(first?.message ?? 'Title is required.');
       return;
     }
 
     this.saving.set(true);
     try {
+      const { title, description } = this.model();
       const m = this.mode();
       if (m.kind === 'create') {
         const result = await this.session.createTask({
-          title: this.title(),
-          description: this.description(),
-          points,
-          assigned: this.assigned() || null,
-          status: this.status(),
+          title,
+          description,
+          status: m.status,
         });
         if (!result.ok) {
           this.formError.set(result.message);
           return;
         }
       } else {
-        const result = await this.session.saveTask(m.task.id, {
-          title: this.title(),
-          description: this.description(),
-          points,
-          assigned: this.assigned() || null,
-          status: this.status(),
-        });
+        const result = await this.session.saveTask(m.task.id, { title, description });
         if (!result.ok) {
           this.formError.set(result.message);
           return;
@@ -167,16 +152,5 @@ export class TaskPanelComponent {
     } finally {
       this.saving.set(false);
     }
-  }
-
-  private parsePoints(raw: string): number | null | 'invalid' {
-    const t = raw.trim();
-    if (t === '') {
-      return null;
-    }
-    if (!/^\d+$/.test(t)) {
-      return 'invalid';
-    }
-    return Number(t);
   }
 }

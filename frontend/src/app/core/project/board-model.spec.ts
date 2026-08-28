@@ -1,15 +1,12 @@
 import { buildBoardColumns } from './board-model';
 import { createEmptyProject } from './create-empty-project';
-import { createUuidV4 } from './uuid';
 import type { TwTask } from './project.types';
 
 function task(partial: Partial<TwTask> & Pick<TwTask, 'title' | 'status'>): TwTask {
   const now = '2026-01-01T00:00:00.000Z';
   return {
-    id: createUuidV4(),
+    id: 't1',
     description: '',
-    points: null,
-    assigned: null,
     created: now,
     updated: now,
     closed: null,
@@ -28,10 +25,10 @@ describe('buildBoardColumns', () => {
   it('places tasks under the matching status', () => {
     const project = createEmptyProject();
     project.tasks = [
-      task({ title: 'A', status: 'Todo' }),
-      task({ title: 'B', status: 'Done', points: 3 }),
-      task({ title: 'C', status: 'Todo' }),
-      task({ title: 'D', status: 'In Progress' }),
+      task({ id: 't1', title: 'A', status: 'Todo' }),
+      task({ id: 't2', title: 'B', status: 'Done' }),
+      task({ id: 't3', title: 'C', status: 'Todo' }),
+      task({ id: 't4', title: 'D', status: 'In Progress' }),
     ];
 
     const columns = buildBoardColumns(project);
@@ -41,15 +38,14 @@ describe('buildBoardColumns', () => {
     expect(columns[1].tasks[0].title).toBe('D');
     expect(columns[2].count).toBe(1);
     expect(columns[2].tasks[0].title).toBe('B');
-    expect(columns[2].tasks[0].points).toBe(3);
   });
 
   it('respects custom status order', () => {
     const project = createEmptyProject();
     project.statuses = ['Backlog', 'Doing', 'Done'];
     project.tasks = [
-      task({ title: 'X', status: 'Doing' }),
-      task({ title: 'Y', status: 'Backlog' }),
+      task({ id: 't1', title: 'X', status: 'Doing' }),
+      task({ id: 't2', title: 'Y', status: 'Backlog' }),
     ];
 
     const columns = buildBoardColumns(project);

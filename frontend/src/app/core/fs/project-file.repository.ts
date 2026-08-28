@@ -10,7 +10,7 @@ export class FileSystemUnsupportedError extends Error {
   override readonly name = 'FileSystemUnsupportedError';
   constructor() {
     super(
-      'This browser cannot open or save .tw.json files on disk. Use Browser only, or open the site in Chrome or Edge for disk files.',
+      'This browser cannot keep a .tw.json file open on disk. Use New browser project (saved in this browser), or upload a file and download to save. Chrome or Edge can write the file on disk.',
     );
   }
 }
@@ -26,10 +26,11 @@ export interface OpenedProjectFile {
   handle: FileSystemFileHandle;
   text: string;
   fileName: string;
+  lastModified: number;
 }
 
 /**
- * Infrastructure: File System Access API adapter for `.tw.json` files.
+ * Infrastructure: File System Access (Chrome/Edge) and upload/download (Safari).
  * No domain validation here — application layer parses/validates.
  */
 @Injectable({ providedIn: 'root' })
@@ -48,9 +49,7 @@ export class ProjectFileRepository {
         excludeAcceptAllOption: false,
         types: TW_JSON_PICKER_TYPES,
       });
-      const file = await handle.getFile();
-      const text = await file.text();
-      return { handle, text, fileName: file.name || handle.name };
+      return this.readHandle(handle);
     } catch (error) {
       if (isAbortError(error)) {
         throw new UserCancelledFilePickerError();
@@ -62,9 +61,13 @@ export class ProjectFileRepository {
   /**
    * Prompt for a new file location, write the full project JSON, return the handle.
    */
-  async pickLocationAndWrite(project: TwProject, suggestedName = 'untitled.tw.json'): Promise<{
+  async pickLocationAndWrite(
+    project: TwProject,
+    suggestedName = 'untitled.tw.json',
+  ): Promise<{
     handle: FileSystemFileHandle;
     fileName: string;
+    lastModified: number;
   }> {
     this.assertSupported();
     const w = getFileSystemWindow();
@@ -75,7 +78,8 @@ export class ProjectFileRepository {
         types: TW_JSON_PICKER_TYPES,
       });
       await this.write(handle, project);
-      return { handle, fileName: handle.name };
+      const lastModified = await this.getLastModified(handle);
+      return { handle, fileName: handle.name, lastModified };
     } catch (error) {
       if (isAbortError(error)) {
         throw new UserCancelledFilePickerError();
@@ -85,10 +89,20 @@ export class ProjectFileRepository {
   }
 
   /** Re-read text from an existing file handle (fresh from disk). */
-  async readHandle(handle: FileSystemFileHandle): Promise<{ text: string; fileName: string }> {
+  async readHandle(handle: FileSystemFileHandle): Promise<OpenedProjectFile> {
     const file = await handle.getFile();
     const text = await file.text();
-    return { text, fileName: file.name || handle.name };
+    return {
+      handle,
+      text,
+      fileName: file.name || handle.name,
+      lastModified: file.lastModified,
+    };
+  }
+
+  async getLastModified(handle: FileSystemFileHandle): Promise<number> {
+    const file = await handle.getFile();
+    return file.lastModified;
   }
 
   /** Write the entire project object to an existing file handle. */
@@ -106,6 +120,21 @@ export class ProjectFileRepository {
       }
       throw error;
     }
+  }
+
+  /** Download the open project as `.tw.json`. */
+  download(project: TwProject, fileName: string): void {
+    const payload = `${JSON.stringify(project, null, 2)}\n`;
+    const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.rel = 'noopener';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
   }
 
   private assertSupported(): void {

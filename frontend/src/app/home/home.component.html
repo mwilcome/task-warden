@@ -1,3 +1,12 @@
+<input
+  #uploadInput
+  class="visually-hidden"
+  type="file"
+  accept=".json,.tw.json,application/json"
+  aria-label="Upload project file"
+  (change)="onUploadSelected($event)"
+/>
+
 @if (session.saveError(); as saveMsg) {
   <div class="save-banner" role="status" aria-live="polite">
     <span>{{ saveMsg }}</span>
@@ -40,40 +49,33 @@
   </div>
 }
 
-@if (session.cacheConflict(); as conflict) {
-  <div class="cache-conflict" role="alertdialog" aria-labelledby="cache-conflict-title">
-    <div class="cache-conflict__text">
-      <p id="cache-conflict-title" class="cache-conflict__title flush">
-        This file differs from the browser copy
+@if (session.dirtyFile(); as dirty) {
+  <div class="dirty-file" role="alertdialog" aria-labelledby="dirty-file-title">
+    <div class="dirty-file__text">
+      <p id="dirty-file-title" class="dirty-file__title flush">This file changed on disk</p>
+      <p class="dirty-file__body flush">
+        Reload to use the file, or overwrite it with the board in this page. There is no merge.
       </p>
-      <p class="cache-conflict__body flush">
-        Choose which version to keep. Using the browser copy will overwrite the file on disk.
-      </p>
-      @if (conflict.fileName) {
-        <p class="cache-conflict__meta flush muted">
-          {{ conflict.disk.name }} · {{ conflict.fileName }}
-        </p>
+      @if (dirty.fileName) {
+        <p class="dirty-file__meta flush muted">{{ dirty.fileName }}</p>
       }
     </div>
-    <div class="cache-conflict__actions">
+    <div class="dirty-file__actions">
       <button
         type="button"
         class="btn btn-primary btn-sm"
         [disabled]="session.busy()"
-        (click)="onConflictUseDisk()"
+        (click)="onDirtyReload()"
       >
-        Use file
+        Reload
       </button>
       <button
         type="button"
         class="btn btn-secondary btn-sm"
         [disabled]="session.busy()"
-        (click)="onConflictUseCache()"
+        (click)="onDirtyOverwrite()"
       >
-        Use browser copy
-      </button>
-      <button type="button" class="btn btn-ghost btn-sm" (click)="onConflictCancel()">
-        Cancel
+        Overwrite
       </button>
     </div>
   </div>
@@ -93,7 +95,7 @@
           class="projects-menu__trigger"
           [attr.aria-expanded]="projectsMenuOpen()"
           aria-haspopup="menu"
-          [disabled]="session.busy()"
+          [disabled]="session.busy() && !session.hasWorkspace()"
           (click)="toggleProjectsMenu($event)"
         >
           Projects
@@ -102,41 +104,61 @@
 
         @if (projectsMenuOpen()) {
           <div class="projects-menu__panel" role="menu" aria-label="Projects">
-            @if (session.fileSystemSupported) {
-              <button
-                type="button"
-                class="projects-menu__item"
-                role="menuitem"
-                (click)="onNewProject()"
-              >
-                New Project
-              </button>
-              <button
-                type="button"
-                class="projects-menu__item"
-                role="menuitem"
-                (click)="onOpenProject()"
-              >
-                Open Project
-              </button>
-            }
+            <button type="button" class="projects-menu__item" role="menuitem" (click)="onNewProject()">
+              New project
+            </button>
             <button
               type="button"
               class="projects-menu__item"
               role="menuitem"
-              (click)="onNewBrowserOnlyProject()"
+              (click)="onNewBrowserProject()"
             >
               New browser project
             </button>
-            @if (session.fileSystemSupported) {
-              <button
-                type="button"
-                class="projects-menu__item"
-                role="menuitem"
-                (click)="onDownloadProjectFileGuide()"
-              >
-                Download project file guide (.md)
-              </button>
+            <button type="button" class="projects-menu__item" role="menuitem" (click)="onOpenProject()">
+              {{ session.fileSystemSupported ? 'Open project' : 'Upload project' }}
+            </button>
+            <button
+              type="button"
+              class="projects-menu__item"
+              role="menuitem"
+              (click)="onDownloadProjectSchema()"
+            >
+              Download schema (.md)
+            </button>
+
+            @if (session.savedInBrowser()) {
+              <div class="projects-menu__sep" role="separator"></div>
+              @if (!confirmDeleteProject()) {
+                <button
+                  type="button"
+                  class="projects-menu__item"
+                  role="menuitem"
+                  (click)="onRequestDeleteBrowserProject($event)"
+                >
+                  Delete this project
+                </button>
+              } @else {
+                <div class="projects-menu__item">
+                  <p class="flush muted">Delete this project?</p>
+                  <div class="form-actions">
+                    <button
+                      type="button"
+                      class="btn btn-danger btn-sm"
+                      (click)="onConfirmDeleteBrowserProject()"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      (click)="onCancelDeleteBrowserProject($event)"
+                    >
+                      Keep
+                    </button>
+                  </div>
+                </div>
+              }
             }
 
             <div class="projects-menu__sep" role="separator"></div>
@@ -151,7 +173,7 @@
               >
                 <span class="projects-menu__recent-name">{{ recent.name }}</span>
                 <span class="projects-menu__recent-file">{{
-                  recent.source === 'browser' ? 'Browser only' : recent.fileName || 'Project file'
+                  recent.source === 'browser' ? 'Saved in this browser' : recent.fileName
                 }}</span>
               </button>
             } @empty {
@@ -163,10 +185,10 @@
     </div>
     <div class="row">
       @if (session.hasWorkspace()) {
-        @if (session.fileName(); as name) {
+        @if (session.savedInBrowser()) {
+          <span class="muted app-header__file" title="Saved in this browser">Saved in this browser</span>
+        } @else if (session.fileName(); as name) {
           <span class="muted app-header__file" title="Open file">{{ name }}</span>
-        } @else if (session.cacheOnly()) {
-          <span class="muted app-header__file" title="Browser copy only">Browser copy</span>
         }
         @if (session.hasFile()) {
           <button
@@ -176,45 +198,53 @@
             [disabled]="session.busy()"
             (click)="onReloadFromDisk()"
           >
-            Reload from Disk
+            Reload
           </button>
         }
-        <button type="button" class="btn btn-ghost btn-sm" (click)="onCloseProject()">
-          Close
-        </button>
+        @if (session.savedInBrowser()) {
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            title="Download the .tw.json file"
+            (click)="onDownloadProject()"
+          >
+            Download
+          </button>
+        }
+        <button type="button" class="btn btn-ghost btn-sm" (click)="onCloseProject()">Close</button>
       }
     </div>
   </header>
 
-  <div class="project-title-bar">
-    @if (editingName()) {
-      <input
-        class="project-title-bar__input"
-        type="text"
-        aria-label="Project name"
-        [ngModel]="nameDraft()"
-        (ngModelChange)="nameDraft.set($event)"
-        (keydown)="onNameKeydown($event)"
-        (blur)="onNameBlur()"
-        #nameInput
-      />
-    } @else {
-      <button
-        type="button"
-        class="project-title-bar__name project-title-bar__name--button"
-        (click)="onStartEditName()"
-        title="Click to rename (Enter to save, Esc to cancel)"
-      >
-        {{ session.project()!.name }}
-      </button>
-    }
-    @if (nameError(); as err) {
-      <p class="field-error flush">{{ err }}</p>
-    }
-  </div>
+  @if (session.hasWorkspace() && session.project(); as project) {
+    <div class="project-title-bar">
+      @if (editingName()) {
+        <input
+          class="project-title-bar__input"
+          type="text"
+          aria-label="Project name"
+          [ngModel]="nameDraft()"
+          (ngModelChange)="nameDraft.set($event)"
+          (keydown)="onNameKeydown($event)"
+          (blur)="onNameBlur()"
+          #nameInput
+        />
+      } @else {
+        <button
+          type="button"
+          class="project-title-bar__name project-title-bar__name--button"
+          (click)="onStartEditName()"
+          title="Click to rename (Enter to save, Esc to cancel)"
+        >
+          {{ project.name }}
+        </button>
+      }
+      @if (nameError(); as err) {
+        <p class="field-error flush">{{ err }}</p>
+      }
+    </div>
 
-  @if (session.uiError(); as err) {
-    @if (session.hasFile()) {
+    @if (session.uiError(); as err) {
       <div class="container-wide">
         <div class="alert alert-error alert-error--row" role="alert">
           <span>{{ err }}</span>
@@ -224,120 +254,108 @@
         </div>
       </div>
     }
-  }
 
-  <div class="board-stage">
-    <main class="app-main app-main--board">
-      <div class="board-wrap">
-        <app-board />
-      </div>
-    </main>
+    <div class="board-stage">
+      <main class="app-main app-main--board">
+        <div class="board-wrap">
+          <app-board />
+        </div>
+      </main>
+    </div>
+  } @else {
+    <div class="open-prompt-layer open-prompt-layer--page">
+      <div class="open-prompt" role="dialog" aria-label="Create or open project">
+        <div class="open-prompt__brand">
+          <app-brand-mark size="sm" />
+          <p class="open-prompt__label flush">Create or open a project</p>
+        </div>
 
-    @if (!session.hasWorkspace()) {
-      <div class="open-prompt-layer">
-        <div class="open-prompt-backdrop" aria-hidden="true"></div>
-        <div class="open-prompt" role="dialog" aria-modal="true" aria-label="Start project">
-          <div class="open-prompt__brand">
-            <app-brand-mark size="sm" />
-            <p class="open-prompt__label flush">Start project</p>
+        <p class="open-prompt__browser-help muted flush">
+          Each project is one <strong>.tw.json</strong> file plus this board.
+          <strong>New browser project</strong> is saved in this browser.
+        </p>
+
+        @if (!session.fileSystemSupported) {
+          <div class="alert alert-info" role="status">
+            This browser cannot keep a file open on disk. Use
+            <strong>New browser project</strong> (saved in this browser), or upload a
+            <strong>.tw.json</strong> and <strong>Download</strong> to save.
           </div>
+        }
 
-          @if (!session.fileSystemSupported) {
-            <div class="alert alert-info" role="status">
-              This browser cannot open or save project files on disk. Use
-              <strong>New browser project</strong> (works on Safari and iPhone).
-            </div>
-          }
-
-          @if (session.uiError(); as err) {
-            <div class="alert alert-error open-prompt__error" role="alert">
-              <p class="flush">{{ err }}</p>
-              <button type="button" class="btn btn-ghost btn-sm" (click)="onDismissUiError()">
-                Dismiss
-              </button>
-            </div>
-          }
-
-          @if (session.fileSystemSupported) {
-            <p class="open-prompt__browser-help muted flush">
-              <strong>New Project</strong> and <strong>Open Project</strong> use a project file on
-              your computer. <strong>New browser project</strong> stores a board only in this
-              browser.
-            </p>
-          }
-          <div class="open-prompt__actions">
-            @if (session.fileSystemSupported) {
-              <button
-                type="button"
-                class="btn btn-primary"
-                [disabled]="session.busy()"
-                (click)="onNewProject()"
-              >
-                New Project
-              </button>
-              <button
-                type="button"
-                class="btn btn-secondary"
-                [disabled]="session.busy()"
-                (click)="onOpenProject()"
-              >
-                Open Project
-              </button>
-            }
-            <button
-              type="button"
-              class="btn"
-              [class.btn-primary]="!session.fileSystemSupported"
-              [class.btn-secondary]="session.fileSystemSupported"
-              [disabled]="session.busy()"
-              (click)="onNewBrowserOnlyProject()"
-            >
-              New browser project
+        @if (session.uiError(); as err) {
+          <div class="alert alert-error open-prompt__error" role="alert">
+            <p class="flush">{{ err }}</p>
+            <button type="button" class="btn btn-ghost btn-sm" (click)="onDismissUiError()">
+              Dismiss
             </button>
           </div>
+        }
 
-          @if (session.fileSystemSupported) {
-            <div class="open-prompt__guide">
-              <p class="open-prompt__guide-help muted flush">
-                Download a short guide (Markdown file) that explains the project file format. Give
-                it to a local AI that edits project files on your computer.
-              </p>
+        <div class="open-prompt__actions">
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="session.busy()"
+            (click)="onNewProject()"
+          >
+            New project
+          </button>
+          <button
+            type="button"
+            class="btn btn-secondary"
+            [disabled]="session.busy()"
+            (click)="onNewBrowserProject()"
+          >
+            New browser project
+          </button>
+          <button
+            type="button"
+            class="btn btn-secondary"
+            [disabled]="session.busy()"
+            (click)="onOpenProject()"
+          >
+            {{ session.fileSystemSupported ? 'Open project' : 'Upload project' }}
+          </button>
+        </div>
+
+        <div class="open-prompt__schema">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm btn-block"
+            (click)="onDownloadProjectSchema()"
+          >
+            Download schema (.md)
+          </button>
+        </div>
+
+        @if (session.recentProjects().length > 0) {
+          <div class="open-prompt__recent">
+            <p class="open-prompt__recent-heading flush">Recent</p>
+            @for (recent of session.recentProjects(); track recent.id) {
               <button
                 type="button"
-                class="btn btn-secondary btn-sm btn-block"
-                (click)="onDownloadProjectFileGuide()"
+                class="open-prompt__recent-btn"
+                [disabled]="session.busy()"
+                (click)="onOpenRecent(recent.id)"
               >
-                Download project file guide (.md)
+                <span class="open-prompt__recent-name">{{ recent.name }}</span>
+                <span class="open-prompt__recent-file">{{
+                  recent.source === 'browser' ? 'Saved in this browser' : recent.fileName
+                }}</span>
               </button>
-            </div>
-          }
+            }
+          </div>
+        }
 
-          @if (session.recentProjects().length > 0) {
-            <div class="open-prompt__recent">
-              <p class="open-prompt__recent-heading flush">Recent</p>
-              @for (recent of session.recentProjects().slice(0, 8); track recent.id) {
-                <button
-                  type="button"
-                  class="open-prompt__recent-btn"
-                  [disabled]="session.busy()"
-                  (click)="onOpenRecent(recent.id)"
-                >
-                  <span class="open-prompt__recent-name">{{ recent.name }}</span>
-                  <span class="open-prompt__recent-file">{{
-                    recent.source === 'browser'
-                      ? 'Browser only'
-                      : recent.fileName || 'Project file'
-                  }}</span>
-                </button>
-              }
-            </div>
-          }
-
-          @if (session.busy()) {
-            <p class="loading-line flush" aria-live="polite">Working…</p>
-          }
-        </div>
+        @if (session.busy()) {
+          <p class="loading-line flush" aria-live="polite">Working…</p>
+        }
       </div>
-    }
-  </div>
+    </div>
+  }
 </div>
+
+@if (session.taskPanel(); as mode) {
+  <app-task-panel [mode]="mode" (closed)="onTaskPanelClosed()" />
+}

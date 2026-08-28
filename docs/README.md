@@ -8,4 +8,4 @@ Operator notes for running and shipping Task Warden. Not a contributor guide.
 | [architecture.md](./architecture.md) | Frontend folders, styling rules, layering |
 | [schema.md](./schema.md) | `.tw.json` fields and validation rules |
 
-The live product is the Angular app under `frontend/`. The `backend/` folder is unused for now.
+The live product is the Angular app under `frontend/`.
